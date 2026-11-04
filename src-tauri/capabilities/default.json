@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "Permessi minimi: API core (eventi, finestra) e dialoghi nativi per la selezione cartelle.",
+  "windows": ["main"],
+  "permissions": ["core:default", "dialog:default"]
+}

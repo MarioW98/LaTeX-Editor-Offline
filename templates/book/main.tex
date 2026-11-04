@@ -1,0 +1,34 @@
+% Modello "Book" — LaTeX Editor Offline
+% Contenuto originale, liberamente modificabile.
+\documentclass[11pt,a4paper]{book}
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage[italian]{babel}
+
+\title{Titolo del libro}
+\author{Nome Autore}
+\date{\today}
+
+\begin{document}
+
+\frontmatter
+\maketitle
+\tableofcontents
+
+\mainmatter
+\chapter{Primo capitolo}
+Testo del primo capitolo. Un esempio di citazione: \cite{rossi2024}.
+
+\chapter{Secondo capitolo}
+\section{Una sezione}
+Testo della sezione del secondo capitolo.
+
+\backmatter
+\appendix
+\chapter{Appendice}
+Contenuto dell'appendice.
+
+\bibliographystyle{plain}
+\bibliography{bibliography}
+
+\end{document}

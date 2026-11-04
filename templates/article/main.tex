@@ -1,0 +1,44 @@
+% Modello "Article" — LaTeX Editor Offline
+% Contenuto originale, liberamente modificabile.
+\documentclass[11pt,a4paper]{article}
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage[italian]{babel}
+
+\title{Titolo del documento}
+\author{Nome Autore}
+\date{\today}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+  Riassunto breve del documento: scopo, contesto e risultati principali.
+\end{abstract}
+
+\section{Introduzione}
+Testo introduttivo del documento. Un esempio di citazione bibliografica:
+la metodologia descritta qui è trattata in dettaglio in \cite{rossi2024}.
+
+\section{Metodi}
+\begin{itemize}
+  \item primo punto della lista;
+  \item secondo punto della lista.
+\end{itemize}
+
+\begin{equation}
+  \label{eq:esempio}
+  E = mc^{2}
+\end{equation}
+L'equazione~\eqref{eq:esempio} mostra un riferimento interno a un'etichetta.
+
+\section{Risultati}
+Descrivere qui i risultati ottenuti.
+
+\section{Conclusioni}
+Chiudere il documento riassumendo i contributi principali.
+
+\bibliographystyle{plain}
+\bibliography{bibliography}
+
+\end{document}

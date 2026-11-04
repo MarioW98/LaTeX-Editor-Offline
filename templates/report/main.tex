@@ -1,0 +1,43 @@
+% Modello "Report" — LaTeX Editor Offline
+% Contenuto originale, liberamente modificabile.
+\documentclass[11pt,a4paper]{report}
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage[italian]{babel}
+
+\title{Titolo della relazione}
+\author{Nome Autore}
+\date{\today}
+
+\begin{document}
+
+\begin{titlepage}
+  \centering
+  \vspace*{2cm}
+  {\LARGE \textbf{Titolo della relazione}}\\[0.5cm]
+  {\large Nome Autore}\\[2cm]
+  Relazione tecnica\\[1cm]
+  \today
+  \vfill
+\end{titlepage}
+
+\tableofcontents
+
+\chapter{Introduzione}
+Scopo e contesto della relazione. Vedere \cite{bianchi2023} per un esempio
+di citazione bibliografica.
+
+\chapter{Sviluppo}
+\section{Attività svolte}
+Descrizione delle attività svolte.
+
+\section{Difficoltà incontrate}
+Descrizione delle difficoltà e delle soluzioni adottate.
+
+\chapter{Conclusioni}
+Sintesi dei risultati e possibili sviluppi futuri.
+
+\bibliographystyle{plain}
+\bibliography{bibliography}
+
+\end{document}

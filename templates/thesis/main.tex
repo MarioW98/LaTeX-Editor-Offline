@@ -1,0 +1,57 @@
+% Modello "Thesis-like" — LaTeX Editor Offline
+% Contenuto originale, liberamente modificabile.
+% Base ispirata a una tesi: frontespizio custom, sommario, capitoli, appendice.
+\documentclass[12pt,a4paper]{report}
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage[italian]{babel}
+
+\title{Tesi di esempio}
+\author{Candidato: Nome Studente\\ Relatore: Prof. Nome Relatore}
+\date{Anno accademico 2025/2026}
+
+\begin{document}
+
+\begin{titlepage}
+  \centering
+  \vspace*{1.5cm}
+  {\large UNIVERSIT\`A DI ESEMPIO}\\[0.3cm]
+  {\large Corso di Laurea in Informatica}\\[2.5cm]
+  {\huge \textbf{Tesi di esempio}}\\[2.5cm]
+  {\large \textbf{Candidato}\\ Nome Studente}\\[1cm]
+  {\large \textbf{Relatore}\\ Prof. Nome Relatore}\\[2.5cm]
+  \large Anno accademico 2025/2026
+  \vfill
+\end{titlepage}
+
+\chapter*{Sommario}
+Breve sommario della tesi: obiettivi, metodo e risultati.
+\addcontentsline{toc}{chapter}{Sommario}
+
+\tableofcontents
+
+\chapter{Introduzione}
+Contesto e motivazioni del lavoro. Vedere \cite{rossi2024} per un esempio
+di citazione bibliografica.
+
+\chapter{Stato dell'arte}
+Analisi della letteratura esistente sull'argomento \cite{bianchi2023}.
+
+\chapter{Metodologia}
+\section{Impostazione del lavoro}
+Descrizione della metodologia seguita.
+
+\chapter{Risultati}
+Presentazione e discussione dei risultati ottenuti.
+
+\chapter{Conclusioni}
+Sintesi del lavoro e possibili sviluppi futuri.
+
+\appendix
+\chapter{Dati supplementari}
+Eventuali tabelle o materiali aggiuntivi.
+
+\bibliographystyle{plain}
+\bibliography{bibliography}
+
+\end{document}

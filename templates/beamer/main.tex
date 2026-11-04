@@ -1,0 +1,48 @@
+% Modello "Beamer" — LaTeX Editor Offline
+% Contenuto originale, liberamente modificabile.
+% Richiede la classe "beamer" nella distribuzione TeX installata.
+\documentclass[11pt]{beamer}
+\usepackage[utf8]{inputenc}
+\usepackage[italian]{babel}
+
+\title{Titolo della presentazione}
+\author{Nome Autore}
+\date{\today}
+
+\begin{document}
+
+\begin{frame}
+  \titlepage
+\end{frame}
+
+\begin{frame}{Sommario}
+  \tableofcontents
+\end{frame}
+
+\section{Contesto}
+
+\begin{frame}{Contesto}
+  \begin{itemize}
+    \item primo punto della presentazione;
+    \item secondo punto della presentazione.
+  \end{itemize}
+\end{frame}
+
+\section{Risultati}
+
+\begin{frame}{Un risultato}
+  \begin{equation}
+    \label{eq:beamer}
+    a^{2} + b^{2} = c^{2}
+  \end{equation}
+  L'equazione~\eqref{eq:beamer} è un esempio dentro un frame.
+\end{frame}
+
+\begin{frame}{Conclusioni}
+  \begin{itemize}
+    \item sintesi dei risultati;
+    \item sviluppi futuri.
+  \end{itemize}
+\end{frame}
+
+\end{document}

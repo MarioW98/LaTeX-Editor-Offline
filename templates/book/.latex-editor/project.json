@@ -1,0 +1,10 @@
+{
+  "name": "book",
+  "mainFile": "main.tex",
+  "engine": "pdflatex",
+  "useLatexmk": true,
+  "outputDir": ".latex-editor/build",
+  "settings": {},
+  "createdAt": 0,
+  "updatedAt": 0
+}
