@@ -1,133 +1,104 @@
-/** Toolbar superiore: progetto, salvataggio, build, toggle pannelli, impostazioni. */
-import { useProjectStore } from '../state/useProjectStore';
-import { useEditorStore } from '../state/useEditorStore';
-import { useBuildStore } from '../state/useBuildStore';
-import { useUiStore } from '../state/useUiStore';
-import { open } from '@tauri-apps/plugin-dialog';
-import type { EngineId } from '../utils/ipc';
-import { NewDocIcon, OpenIcon, SaveIcon, PlayIcon, StopIcon, SettingsIcon, TerminalIcon, DocIcon } from '../filetree/icons';
+import { useAppStore } from "../state/store";
 
-const ENGINES: EngineId[] = ['pdflatex', 'xelatex', 'lualatex'];
+function Toolbar(): JSX.Element {
+  const projectName = useAppStore((s) => s.projectName);
+  const hasProject = useAppStore((s) => s.projectRoot !== null);
+  const buildStatus = useAppStore((s) => s.build.status);
+  const engine = useAppStore((s) => s.projectSettings.engine);
+  const theme = useAppStore((s) => s.globalSettings.theme);
+  const ui = useAppStore((s) => s.ui);
+  const setUi = useAppStore((s) => s.setUi);
+  const startBuild = useAppStore((s) => s.startBuild);
+  const cancelBuild = useAppStore((s) => s.cancelBuild);
+  const updateProjectSettings = useAppStore((s) => s.updateProjectSettings);
+  const toggleTheme = useAppStore((s) => s.toggleTheme);
+  const latex = useAppStore((s) => s.latex);
 
-export function Toolbar(): JSX.Element {
-  const root = useProjectStore((s) => s.root);
-  const meta = useProjectStore((s) => s.meta);
-  const updateMeta = useProjectStore((s) => s.updateMeta);
-  const saveActive = useEditorStore((s) => s.saveActive);
-  const start = useBuildStore((s) => s.start);
-  const cancel = useBuildStore((s) => s.cancel);
-  const running = useBuildStore((s) => s.running);
-  const showOutput = useUiStore((s) => s.showOutput);
-  const showPdf = useUiStore((s) => s.showPdf);
-  const toggleOutput = useUiStore((s) => s.toggleOutput);
-  const togglePdf = useUiStore((s) => s.togglePdf);
-  const setSettingsOpen = useUiStore((s) => s.setSettingsOpen);
-  const setNewProjectOpen = useUiStore((s) => s.setNewProjectOpen);
-
-  const hasProject = root != null && meta != null;
+  const running = buildStatus === "running";
+  const engineDisabled = !hasProject || running;
 
   return (
-    <header className="toolbar" role="toolbar" aria-label="Barra strumenti">
+    <header className="toolbar">
       <div className="toolbar-brand">
-        <span className="brand-mark" aria-hidden="true">
-          LX
-        </span>
         <span className="brand-name">LaTeX Editor Offline</span>
+        {hasProject && <span className="brand-project">{projectName}</span>}
       </div>
 
-      <div className="toolbar-group">
-        <button className="btn" onClick={() => setNewProjectOpen(true)} title="Crea un nuovo progetto da template">
-          <NewDocIcon size={15} />
-          <span>Nuovo</span>
+      {running ? (
+        <button className="btn btn-danger" onClick={() => void cancelBuild()}>
+          ■ Interrompi
         </button>
-        <OpenProjectButton />
-      </div>
-
-      <div className="toolbar-group">
-        <button className="btn" onClick={() => void saveActive()} disabled={!hasProject} title="Salva (Ctrl/Cmd+S)">
-          <SaveIcon size={15} />
-          <span>Salva</span>
+      ) : (
+        <button
+          className="btn btn-primary"
+          disabled={!hasProject}
+          onClick={() => void startBuild()}
+          title="Compila il progetto (produce/aggiorna il PDF)"
+        >
+          ▶ Compila
         </button>
-      </div>
+      )}
 
-      <div className="toolbar-group">
-        {hasProject && (
-          <label className="engine-select" title="Motore LaTeX per questo progetto">
-            <select
-              value={meta.engine}
-              onChange={(e) => void updateMeta({ engine: e.target.value as EngineId })}
-              disabled={running}
-            >
-              {ENGINES.map((engine) => (
-                <option key={engine} value={engine}>
-                  {engine}
-                </option>
-              ))}
-            </select>
-          </label>
-        )}
-        {running ? (
-          <button className="btn btn-stop" onClick={() => void cancel()} title="Annulla build (Ctrl/Cmd+B)">
-            <StopIcon size={15} />
-            <span>Interrompi</span>
-          </button>
-        ) : (
-          <button
-            className="btn btn-build"
-            onClick={() => void start()}
-            disabled={!hasProject}
-            title="Compila il documento (Ctrl/Cmd+B)"
-          >
-            <PlayIcon size={15} />
-            <span>Compila</span>
-          </button>
-        )}
-      </div>
+      <select
+        value={engine}
+        disabled={engineDisabled}
+        title="Motore di compilazione"
+        onChange={(e) => void updateProjectSettings({ engine: e.target.value })}
+      >
+        <option value="pdflatex">pdflatex</option>
+        <option value="xelatex">xelatex</option>
+        <option value="lualatex">lualatex</option>
+      </select>
+
+      {latex && !latex.found && hasProject ? (
+        <span className="danger-text" title="Nessuna distribuzione LaTeX rilevata">
+          LaTeX non trovato
+        </span>
+      ) : null}
 
       <div className="toolbar-spacer" />
 
-      <div className="toolbar-group">
-        <button
-          className={`btn-icon tb-toggle${showOutput ? ' on' : ''}`}
-          onClick={toggleOutput}
-          title={showOutput ? 'Nascondi pannello output' : 'Mostra pannello output'}
-          aria-pressed={showOutput}
-        >
-          <TerminalIcon size={16} />
-        </button>
-        <button
-          className={`btn-icon tb-toggle${showPdf ? ' on' : ''}`}
-          onClick={togglePdf}
-          title={showPdf ? 'Nascondi anteprima PDF' : 'Mostra anteprima PDF'}
-          aria-pressed={showPdf}
-        >
-          <DocIcon size={16} />
-        </button>
-        <button className="btn-icon tb-toggle" onClick={() => setSettingsOpen(true)} title="Impostazioni">
-          <SettingsIcon size={16} />
-        </button>
-      </div>
+      {hasProject && (
+        <>
+          <button
+            className="btn btn-ghost btn-small"
+            title="Mostra/nascondi l'albero dei file"
+            onClick={() => setUi({ leftPanel: !ui.leftPanel })}
+          >
+            File
+          </button>
+          <button
+            className="btn btn-ghost btn-small"
+            title="Mostra/nascondi l'anteprima PDF"
+            onClick={() => setUi({ rightPanel: !ui.rightPanel })}
+          >
+            PDF
+          </button>
+          <button
+            className="btn btn-ghost btn-small"
+            title="Mostra/nascondi il pannello di output"
+            onClick={() => setUi({ bottomPanel: !ui.bottomPanel })}
+          >
+            Output
+          </button>
+        </>
+      )}
+
+      <button className="btn btn-small" onClick={() => setUi({ newProjectOpen: true })}>
+        Nuovo progetto
+      </button>
+      <button className="btn btn-small" onClick={() => setUi({ settingsOpen: true })}>
+        Impostazioni
+      </button>
+      <button
+        className="btn btn-ghost btn-small"
+        title="Tema chiaro/scuro"
+        onClick={() => void toggleTheme()}
+      >
+        {theme === "dark" ? "☾" : "☀"}
+      </button>
     </header>
   );
 }
 
-function OpenProjectButton(): JSX.Element {
-  const openProject = useProjectStore((s) => s.openProject);
-  return (
-    <button
-      className="btn"
-      title="Apri una cartella progetto esistente"
-      onClick={() => {
-        void (async () => {
-          const dir = await open({ directory: true, multiple: false, title: 'Apri cartella progetto' });
-          if (typeof dir === 'string') {
-            await openProject(dir);
-          }
-        })();
-      }}
-    >
-      <OpenIcon size={15} />
-      <span>Apri</span>
-    </button>
-  );
-}
+export default Toolbar;

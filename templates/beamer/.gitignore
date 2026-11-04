@@ -1,18 +1,3 @@
-# Artefatti di build generati dall'editor
 .latex-editor/build/
-
-# Artefatti LaTeX generici (se si compila manualmente fuori dall'editor)
-*.aux
-*.log
-*.out
-*.toc
-*.lof
-*.lot
-*.bbl
-*.blg
-*.fls
-*.fdb_latexmk
 *.synctex.gz
-*.nav
-*.snm
-*.vrb
+

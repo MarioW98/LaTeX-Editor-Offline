@@ -1,9 +1,13 @@
-% Modello "Book" — LaTeX Editor Offline
-% Contenuto originale, liberamente modificabile.
+% Modello "Libro" — LaTeX Editor Offline
+% Contenuto segnaposto originale: libero da usare e modificare.
 \documentclass[11pt,a4paper]{book}
+
 \usepackage[T1]{fontenc}
 \usepackage[utf8]{inputenc}
 \usepackage[italian]{babel}
+\usepackage{amsmath,amssymb}
+\usepackage{graphicx}
+\usepackage[hidelinks]{hyperref}
 
 \title{Titolo del libro}
 \author{Nome Autore}
@@ -16,17 +20,36 @@
 \tableofcontents
 
 \mainmatter
+
 \chapter{Primo capitolo}
-Testo del primo capitolo. Un esempio di citazione: \cite{rossi2024}.
+Apri qui il tuo libro. Struttura il testo in paragrafi coerenti e usa le
+note a margine con parsimonia, per esempio\footnote{una nota a pié di
+pagina di esempio}.
+
+\section{Una sezione}
+Il testo di una sezione di esempio.
 
 \chapter{Secondo capitolo}
-\section{Una sezione}
-Testo della sezione del secondo capitolo.
+Ogni capitolo riparte da pagina dispari per default nella classe
+\texttt{book}.
+
+\section{Un'altra sezione}
+Altro testo di esempio con un elenco:
+
+\begin{enumerate}
+  \item primo punto;
+  \item secondo punto.
+\end{enumerate}
+
+\chapter{Terzo capitolo}
+Chiudi il corpo del libro.
 
 \backmatter
+
 \appendix
+
 \chapter{Appendice}
-Contenuto dell'appendice.
+Materiale di supporto, dati o dimostrazioni lunghe.
 
 \bibliographystyle{plain}
 \bibliography{bibliography}

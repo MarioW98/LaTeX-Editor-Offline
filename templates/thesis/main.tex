@@ -1,56 +1,98 @@
-% Modello "Thesis-like" — LaTeX Editor Offline
-% Contenuto originale, liberamente modificabile.
-% Base ispirata a una tesi: frontespizio custom, sommario, capitoli, appendice.
+% Modello "Tesi" — LaTeX Editor Offline
+% Contenuto segnaposto originale: libero da usare e modificare.
 \documentclass[12pt,a4paper]{report}
+
 \usepackage[T1]{fontenc}
 \usepackage[utf8]{inputenc}
 \usepackage[italian]{babel}
+\usepackage{amsmath,amssymb}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{setspace}
+\usepackage[hidelinks]{hyperref}
 
-\title{Tesi di esempio}
-\author{Candidato: Nome Studente\\ Relatore: Prof. Nome Relatore}
-\date{Anno accademico 2025/2026}
+\onehalfspacing
+
+\newcommand{\tesiTitolo}{Titolo della tesi}
+\newcommand{\tesiCandidato}{Nome Cognome}
+\newcommand{\tesiCorso}{Corso di laurea di esempio}
+\newcommand{\tesiRelatore}{Prof. Nome Relatore}
+\newcommand{\tesiAnno}{2025/2026}
 
 \begin{document}
 
+% ---------------------------------------------------------- frontespizio ---
 \begin{titlepage}
   \centering
-  \vspace*{1.5cm}
-  {\large UNIVERSIT\`A DI ESEMPIO}\\[0.3cm]
-  {\large Corso di Laurea in Informatica}\\[2.5cm]
-  {\huge \textbf{Tesi di esempio}}\\[2.5cm]
-  {\large \textbf{Candidato}\\ Nome Studente}\\[1cm]
-  {\large \textbf{Relatore}\\ Prof. Nome Relatore}\\[2.5cm]
-  \large Anno accademico 2025/2026
+  {\Large Universit{\`a} di esempio\par}
+  \vspace{0.5cm}
+  {\large \tesiCorso\par}
+  \vspace{3cm}
+  {\Huge \tesiTitolo\par}
+  \vspace{3cm}
+  {\large Candidato:\par}
+  {\large \tesiCandidato\par}
+  \vspace{1cm}
+  {\large Relatore:\par}
+  {\large \tesiRelatore\par}
   \vfill
+  {\large Anno accademico \tesiAnno\par}
 \end{titlepage}
 
-\chapter*{Sommario}
-Breve sommario della tesi: obiettivi, metodo e risultati.
-\addcontentsline{toc}{chapter}{Sommario}
+% -------------------------------------------------------------- ringraziamenti
+\chapter*{Ringraziamenti}
+Ringrazio chi ha contribuito alla realizzazione di questo lavoro.
+\textit{(Segnaposto: rimuovi il capitolo se non serve.)}
 
+% ------------------------------------------------------------------- indice
 \tableofcontents
 
+% ------------------------------------------------------------------- capitoli
 \chapter{Introduzione}
-Contesto e motivazioni del lavoro. Vedere \cite{rossi2024} per un esempio
-di citazione bibliografica.
+Descrivi il problema, la motivazione e la struttura della tesi. Una
+citazione di esempio: \cite{esempio2024}.
 
 \chapter{Stato dell'arte}
-Analisi della letteratura esistente sull'argomento \cite{bianchi2023}.
+\section{Lavori correlati}
+Rassegna della letteratura, organizzata per temi.
+
+\section{Limiti delle soluzioni esistenti}
+Evidenzia il margine di contributo della tesi.
 
 \chapter{Metodologia}
-\section{Impostazione del lavoro}
-Descrizione della metodologia seguita.
+Descrivi il metodo proposto. Un'equazione di esempio:
 
-\chapter{Risultati}
-Presentazione e discussione dei risultati ottenuti.
+\begin{equation}
+  \label{eq:metodo}
+  f(x) = ax^2 + bx + c
+\end{equation}
+
+e il riferimento ad essa: \eqref{eq:metodo}.
+
+\chapter{Sperimentazione}
+\section{Impostazione sperimentale}
+Protocollo, dataset e metriche.
+
+\section{Risultati}
+Riporta i risultati con tabelle e figure, per esempio:
+
+\begin{table}[htbp]
+  \centering
+  \caption{Risultati di esempio.}
+  \begin{tabular}{lrr}
+    \toprule
+    Configurazione & Metrica A & Metrica B \\
+    \midrule
+    Base           & 0,72      & 0,81      \\
+    Proposta       & 0,85      & 0,90      \\
+    \bottomrule
+  \end{tabular}
+\end{table}
 
 \chapter{Conclusioni}
-Sintesi del lavoro e possibili sviluppi futuri.
+Sintesi del contributo, limiti e sviluppi futuri.
 
-\appendix
-\chapter{Dati supplementari}
-Eventuali tabelle o materiali aggiuntivi.
-
+% ------------------------------------------------------------------ bibliografia
 \bibliographystyle{plain}
 \bibliography{bibliography}
 

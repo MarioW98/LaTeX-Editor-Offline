@@ -1,9 +1,9 @@
-# Modello Book
+# Modello «Libro»
 
-Modello minimale per un libro con frontmatter, indice e appendice.
+Libro con frontespizio, indice, numerazione romana in apertura, capitoli,
+appendice e bibliografia.
 
-- `main.tex` — documento principale;
-- `bibliography.bib` — bibliografia;
-- compila con `pdflatex` (o `latexmk -pdf`), la bibliografia richiede `bibtex`.
+- File principale: `main.tex`
+- Motore consigliato: `pdflatex`
 
-Creato da LaTeX Editor Offline. Contenuto originale, uso libero.
+Contenuto originale, libero da usare e modificare.

@@ -1,10 +1,7 @@
 {
-  "name": "demo-article",
+  "name": "Progetto dimostrativo",
   "mainFile": "main.tex",
   "engine": "pdflatex",
-  "useLatexmk": true,
-  "outputDir": ".latex-editor/build",
-  "settings": {},
-  "createdAt": 0,
-  "updatedAt": 0
+  "template": "demo",
+  "createdWith": "LaTeX Editor Offline"
 }

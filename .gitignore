@@ -1,7 +1,21 @@
+# Node / frontend
 node_modules/
-dist/*
-!dist/.gitkeep
+dist/
+
+# Rust / Tauri
 src-tauri/target/
 src-tauri/gen/schemas/
+
+# Build artefacts of LaTeX projects
+*.aux
+*.log
+*.synctex.gz
+
+# OS junk
 .DS_Store
-*.local
+Thumbs.db
+
+# Editors
+*.swp
+.idea/
+.vscode/

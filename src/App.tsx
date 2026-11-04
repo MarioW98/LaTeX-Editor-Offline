@@ -1,165 +1,144 @@
-/**
- * Layout principale:
- * toolbar · [filetree | editor(+tab) | pdf] con pannello build sotto l'editor · statusbar.
- * Pannelli ridimensionabili tramite splitter, output/PDF nascondibili.
- */
-import { useEffect } from 'react';
-import { Toolbar } from './components/Toolbar';
-import { StatusBar } from './components/StatusBar';
-import { Toasts } from './components/Toasts';
-import { Splitter } from './components/Splitter';
-import { FileTree } from './filetree/FileTree';
-import { TabBar } from './editor/TabBar';
-import { CodeEditor } from './editor/CodeEditor';
-import { EmptyEditor } from './editor/EmptyEditor';
-import { useAutosave } from './editor/useAutosave';
-import { useExternalChanges } from './editor/useExternalChanges';
-import { BuildPanel } from './build/BuildPanel';
-import { useBuildEvents } from './build/useBuildEvents';
-import { PdfPanel } from './pdf/PdfPanel';
-import { WelcomeScreen } from './features/welcome/WelcomeScreen';
-import { NewProjectDialog } from './features/newproject/NewProjectDialog';
-import { FileChangeDialog } from './features/filechange/FileChangeDialog';
-import { SettingsModal } from './settings/SettingsModal';
-import { effectiveOf, useSettingsStore } from './state/useSettingsStore';
-import { useProjectStore } from './state/useProjectStore';
-import { useEditorStore } from './state/useEditorStore';
-import { useBuildStore } from './state/useBuildStore';
-import { useUiStore } from './state/useUiStore';
+import { useEffect } from "react";
+
+import StatusBar from "./components/StatusBar";
+import Toolbar from "./components/Toolbar";
+import EditorTabs from "./editor/EditorTabs";
+import CodeEditor from "./editor/CodeEditor";
+import FileTree from "./filetree/FileTree";
+import NewProjectDialog from "./features/project/NewProjectDialog";
+import ProjectPicker from "./features/project/ProjectPicker";
+import OutputPanel from "./features/build/OutputPanel";
+import SettingsDialog from "./features/settings/SettingsDialog";
+import PdfViewer from "./pdf/PdfViewer";
+import { useAppStore } from "./state/store";
+import * as ipc from "./tauri/ipc";
 
 export default function App(): JSX.Element {
-  const ready = useSettingsStore((s) => s.ready);
-  const theme = useSettingsStore((s) => s.global.theme);
-  const global = useSettingsStore((s) => s.global);
-  const projectMeta = useSettingsStore((s) => s.project);
-  const root = useProjectStore((s) => s.root);
-  const tabsCount = useEditorStore((s) => s.tabs.length);
+  const theme = useAppStore((s) => s.globalSettings.theme);
+  const projectRoot = useAppStore((s) => s.projectRoot);
+  const settingsOpen = useAppStore((s) => s.ui.settingsOpen);
+  const newProjectOpen = useAppStore((s) => s.ui.newProjectOpen);
+  const bootstrap = useAppStore((s) => s.bootstrap);
 
-  const showOutput = useUiStore((s) => s.showOutput);
-  const showPdf = useUiStore((s) => s.showPdf);
-  const sidebarWidth = useUiStore((s) => s.sidebarWidth);
-  const pdfWidth = useUiStore((s) => s.pdfWidth);
-  const bottomHeight = useUiStore((s) => s.bottomHeight);
-  const setSidebarWidth = useUiStore((s) => s.setSidebarWidth);
-  const setPdfWidth = useUiStore((s) => s.setPdfWidth);
-  const setBottomHeight = useUiStore((s) => s.setBottomHeight);
-
-  useBuildEvents();
-  useAutosave();
-  useExternalChanges();
-
-  // Caricamento impostazioni + rilevamento LaTeX (una sola volta).
   useEffect(() => {
-    void useSettingsStore.getState().init();
-  }, []);
+    void bootstrap();
 
-  // Applicazione del tema.
-  useEffect(() => {
-    document.documentElement.dataset.theme = theme;
-  }, [theme]);
+    const unOutput = ipc.onBuildLine((ev) => useAppStore.getState().appendBuildLine(ev));
+    const unFinished = ipc.onBuildFinished((ev) => useAppStore.getState().finishBuild(ev));
 
-  // Chiusura progetto → tab editor chiuse.
-  useEffect(() => {
-    if (root == null) {
-      useEditorStore.getState().closeAll();
-      useBuildStore.getState().clearOutput();
-    }
-  }, [root]);
-
-  // Scorciatoie globali: Ctrl/Cmd+S salva, Ctrl/Cmd+B compila/annnulla.
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      const mod = e.ctrlKey || e.metaKey;
-      if (!mod) return;
-      const k = e.key.toLowerCase();
-      if (k === 's') {
+    const onKeydown = (e: KeyboardEvent): void => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "s") {
         e.preventDefault();
-        void useEditorStore.getState().saveActive();
-      } else if (k === 'b') {
-        e.preventDefault();
-        const build = useBuildStore.getState();
-        if (build.running) void build.cancel();
-        else void build.start();
+        void useAppStore.getState().saveActiveTab();
       }
     };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, []);
+    window.addEventListener("keydown", onKeydown);
 
-  if (!ready) {
-    return <div className="boot">Caricamento impostazioni…</div>;
-  }
+    const onFocus = (): void => void useAppStore.getState().checkExternalChanges();
+    window.addEventListener("focus", onFocus);
+    const interval = setInterval(() => void useAppStore.getState().checkExternalChanges(), 30000);
 
-  const eff = effectiveOf(global, projectMeta);
-  const shellEscapeBanner = global.allowShellEscape && eff.warnShellEscape;
-
-  const columns = showPdf
-    ? `${sidebarWidth}px 4px minmax(200px, 1fr) 4px ${pdfWidth}px`
-    : `${sidebarWidth}px 4px minmax(200px, 1fr)`;
-  const rows = showOutput ? `minmax(120px, 1fr) 4px ${bottomHeight}px` : 'minmax(120px, 1fr)';
+    return () => {
+      void unOutput.then((f) => f());
+      void unFinished.then((f) => f());
+      window.removeEventListener("keydown", onKeydown);
+      window.removeEventListener("focus", onFocus);
+      clearInterval(interval);
+    };
+  }, [bootstrap]);
 
   return (
-    <div className="app">
+    <div className="app" data-theme={theme}>
       <Toolbar />
-
-      {shellEscapeBanner && (
-        <div className="banner-warn" role="alert">
-          shell-escape è attivo: i documenti possono eseguire comandi in compilazione. Disattivalo
-          nelle impostazioni se non è strettamente necessario.
-        </div>
-      )}
-
-      {root != null ? (
-        <div className="layout" style={{ gridTemplateColumns: columns, gridTemplateRows: rows }}>
-          <div className="pane pane-sidebar" style={{ gridColumn: '1', gridRow: '1 / -1' }}>
-            <FileTree />
-          </div>
-          <div style={{ gridColumn: '2', gridRow: '1 / -1' }}>
-            <Splitter orientation="v" onDelta={(d) => setSidebarWidth(sidebarWidth + d)} />
-          </div>
-          <div className="pane pane-editor" style={{ gridColumn: '3', gridRow: '1' }}>
-            {tabsCount > 0 ? (
-              <>
-                <TabBar />
-                <CodeEditor />
-              </>
-            ) : (
-              <EmptyEditor />
-            )}
-          </div>
-          {showOutput && (
-            <>
-              <div style={{ gridColumn: '3', gridRow: '2' }}>
-                <Splitter orientation="h" onDelta={(d) => setBottomHeight(bottomHeight - d)} />
-              </div>
-              <div className="pane pane-bottom" style={{ gridColumn: '3', gridRow: '3' }}>
-                <BuildPanel />
-              </div>
-            </>
-          )}
-          {showPdf && (
-            <>
-              <div style={{ gridColumn: '4', gridRow: '1 / -1' }}>
-                <Splitter orientation="v" onDelta={(d) => setPdfWidth(pdfWidth - d)} />
-              </div>
-              <div className="pane pane-pdf" style={{ gridColumn: '5', gridRow: '1 / -1' }}>
-                <PdfPanel />
-              </div>
-            </>
-          )}
-        </div>
-      ) : (
-        <div className="layout-welcome">
-          <WelcomeScreen />
-        </div>
-      )}
-
+      {projectRoot ? <Workspace /> : <ProjectPicker />}
       <StatusBar />
+      {settingsOpen && <SettingsDialog />}
+      {newProjectOpen && <NewProjectDialog />}
+      <ExternalChangesDialog />
+    </div>
+  );
+}
 
-      <SettingsModal />
-      <NewProjectDialog />
-      <FileChangeDialog />
-      <Toasts />
+function Workspace(): JSX.Element {
+  const ui = useAppStore((s) => s.ui);
+  const cols = [
+    ui.leftPanel ? "250px" : null,
+    "1fr",
+    ui.rightPanel ? "minmax(280px, 42%)" : null,
+  ]
+    .filter((c): c is string => c !== null)
+    .join(" ");
+  const rows = ["auto", "1fr", ui.bottomPanel ? "230px" : null]
+    .filter((r): r is string => r !== null)
+    .join(" ");
+
+  return (
+    <div className="workspace" style={{ gridTemplateColumns: cols }}>
+      {ui.leftPanel && (
+        <aside className="panel panel-left">
+          <FileTree />
+        </aside>
+      )}
+      <section className="center" style={{ gridTemplateRows: rows }}>
+        <EditorTabs />
+        <div className="editor-host">
+          <CodeEditor />
+        </div>
+        {ui.bottomPanel && (
+          <div className="panel panel-bottom">
+            <OutputPanel />
+          </div>
+        )}
+      </section>
+      {ui.rightPanel && (
+        <aside className="panel panel-right">
+          <PdfViewer />
+        </aside>
+      )}
+    </div>
+  );
+}
+
+function ExternalChangesDialog(): JSX.Element | null {
+  const externalChanges = useAppStore((s) => s.externalChanges);
+  const tabs = useAppStore((s) => s.tabs);
+  const reloadExternalFiles = useAppStore((s) => s.reloadExternalFiles);
+  const dismissExternalChanges = useAppStore((s) => s.dismissExternalChanges);
+
+  if (externalChanges.length === 0) return null;
+
+  const reload = (): void => {
+    void reloadExternalFiles(externalChanges.map((c) => c.path));
+  };
+
+  return (
+    <div className="modal-backdrop" role="presentation">
+      <div className="modal" role="dialog" aria-modal={true} aria-label="File modificati all'esterno">
+        <h3>File modificati all&apos;esterno</h3>
+        <p className="dialog-hint">
+          Questi file sono cambiati su disco mentre erano aperti nell&apos;editor:
+        </p>
+        <ul className="plain-list">
+          {externalChanges.map((c) => {
+            const tab = tabs.find((t) => t.path === c.path);
+            const dirty = tab ? tab.content !== tab.savedContent : false;
+            return (
+              <li key={c.path}>
+                <code>{c.name}</code>
+                {dirty ? <span className="warn-text"> (con modifiche non salvate)</span> : null}
+              </li>
+            );
+          })}
+        </ul>
+        <div className="dialog-actions">
+          <button className="btn btn-primary" onClick={reload}>
+            Ricarica dal disco
+          </button>
+          <button className="btn" onClick={dismissExternalChanges}>
+            Mantieni le mie modifiche
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

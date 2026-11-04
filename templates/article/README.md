@@ -1,9 +1,11 @@
-# Modello Article
+# Modello «Articolo»
 
-Modello minimale per un articolo LaTeX con bibliografia BibTeX.
+Articolo scientifico semplice con abstract, indice, sezioni, equazione,
+tabella `booktabs` e bibliografia BibTeX.
 
-- `main.tex` — documento principale;
-- `bibliography.bib` — bibliografia;
-- compila con `pdflatex` (o `latexmk -pdf`), la bibliografia richiede `bibtex`.
+- File principale: `main.tex`
+- Motore consigliato: `pdflatex`
+- Bibliografia: `bibliography.bib` (voci segnaposto da sostituire)
 
-Creato da LaTeX Editor Offline. Contenuto originale, uso libero.
+Apri questa cartella come progetto in LaTeX Editor Offline e premi
+«Compila». Contenuto originale, libero da usare e modificare.

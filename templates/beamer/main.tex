@@ -1,12 +1,14 @@
-% Modello "Beamer" — LaTeX Editor Offline
-% Contenuto originale, liberamente modificabile.
-% Richiede la classe "beamer" nella distribuzione TeX installata.
-\documentclass[11pt]{beamer}
-\usepackage[utf8]{inputenc}
-\usepackage[italian]{babel}
+% Modello "Presentazione" (Beamer) — LaTeX Editor Offline
+% Contenuto segnaposto originale: libero da usare e modificare.
+\documentclass[11pt,aspectratio=169]{beamer}
 
-\title{Titolo della presentazione}
+\usepackage[italian]{babel}
+\usepackage{amsmath}
+
+\title{Presentazione di esempio}
+\subtitle{Sottotitolo facoltativo}
 \author{Nome Autore}
+\institute{Istituto di esempio}
 \date{\today}
 
 \begin{document}
@@ -15,34 +17,48 @@
   \titlepage
 \end{frame}
 
-\begin{frame}{Sommario}
+\begin{frame}{Contenuti}
   \tableofcontents
 \end{frame}
 
-\section{Contesto}
+\section{Introduzione}
 
-\begin{frame}{Contesto}
+\begin{frame}{Introduzione}
   \begin{itemize}
     \item primo punto della presentazione;
-    \item secondo punto della presentazione.
+    \item secondo punto della presentazione;
+    \item terzo punto con una formula: $e^{i\pi} + 1 = 0$.
   \end{itemize}
 \end{frame}
 
-\section{Risultati}
+\section{Sviluppo}
 
-\begin{frame}{Un risultato}
-  \begin{equation}
-    \label{eq:beamer}
-    a^{2} + b^{2} = c^{2}
-  \end{equation}
-  L'equazione~\eqref{eq:beamer} è un esempio dentro un frame.
+\begin{frame}{Due colonne}
+  \begin{columns}[T]
+    \begin{column}{0.48\textwidth}
+      Testo a sinistra: descrivi un'idea.
+    \end{column}
+    \begin{column}{0.48\textwidth}
+      Testo a destra: descrivi l'altra idea.
+    \end{column}
+  \end{columns}
 \end{frame}
+
+\begin{frame}{Un blocco}
+  \begin{block}{Da ricordare}
+    I blocchi evidenziano i messaggi chiave della diapositiva.
+  \end{block}
+\end{frame}
+
+\section{Conclusioni}
 
 \begin{frame}{Conclusioni}
   \begin{itemize}
-    \item sintesi dei risultati;
+    \item risultato principale;
     \item sviluppi futuri.
   \end{itemize}
+  \vfill
+  \centering Grazie dell'attenzione.
 \end{frame}
 
 \end{document}

@@ -1,10 +1,10 @@
-# Modello Beamer
+# Modello «Presentazione»
 
-Modello minimale per presentazioni con la classe `beamer`.
+Presentazione Beamer 16:9 con title page, indice, elenchi, colonne e
+blocchi.
 
-- `main.tex` — presentazione;
-- richiede la classe `beamer` (inclusa nelle installazioni TeX complete;
-  su installazioni minime installarla con il gestore pacchetti della
-  distribuzione TeX in uso).
+- File principale: `main.tex`
+- Motore consigliato: `pdflatex`
+- Richiede il pacchetto `beamer` (incluso nelle distribuzioni complete)
 
-Creato da LaTeX Editor Offline. Contenuto originale, uso libero.
+Contenuto originale, libero da usare e modificare.

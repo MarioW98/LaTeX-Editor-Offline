@@ -1,10 +1,11 @@
-# Modello Thesis-like
+# Modello «Tesi»
 
-Base minimale ispirata a una tesi triennale/magistrale: frontespizio,
-sommario, capitoli, appendice e bibliografia.
+Tesi di laurea con frontespizio personalizzato, ringraziamenti, indice,
+capitoli tipici (introduzione, stato dell'arte, metodologia,
+sperimentazione, conclusioni) e bibliografia.
 
-- `main.tex` — documento principale;
-- `bibliography.bib` — bibliografia;
-- compila con `pdflatex` (o `latexmk -pdf`), la bibliografia richiede `bibtex`.
+- File principale: `main.tex`
+- Motore consigliato: `pdflatex`
+- Interlinea 1,5 (`setspace`)
 
-Creato da LaTeX Editor Offline. Contenuto originale, uso libero.
+Contenuto originale, libero da usare e modificare.

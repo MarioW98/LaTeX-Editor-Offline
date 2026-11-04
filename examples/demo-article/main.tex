@@ -1,68 +1,44 @@
-% Progetto di esempio — LaTeX Editor Offline
-% Contenuto originale, liberamente modificabile.
+% Progetto demo — LaTeX Editor Offline
+% Contenuto segnaposto originale: libero da usare e modificare.
 \documentclass[11pt,a4paper]{article}
+
 \usepackage[T1]{fontenc}
 \usepackage[utf8]{inputenc}
 \usepackage[italian]{babel}
+\usepackage{amsmath}
+\usepackage[hidelinks]{hyperref}
 
 \title{Progetto dimostrativo}
 \author{LaTeX Editor Offline}
 \date{\today}
 
 \begin{document}
+
 \maketitle
 
-\begin{abstract}
-  Progetto dimostrativo per verificare l'editor: apertura, modifica,
-  compilazione e anteprima PDF.
-\end{abstract}
+\section{Benvenuto}
+Questo progetto dimostrativo serve a provare subito l'editor: apri la
+cartella, premi «Compila» e guarda il PDF comparire a destra.
 
-\section{Introduzione}
-Questo progetto serve a provare il flusso completo dell'editor:
-aprire la cartella, modificare questo file, salvare con \texttt{Ctrl+S}
-e lanciare la build. La citazione d'esempio è \cite{rossi2024}.
-
-\section{Strutture di esempio}
-
-\subsection{Elenco}
+\section{Alcune funzionalità}
 \begin{itemize}
-  \item primo elemento;
-  \item secondo elemento.
+  \item evidenziazione della sintassi e completamento dei comandi;
+  \item compilazione con \texttt{latexmk} o pipeline a passate;
+  \item elenco dei problemi cliccabile.
 \end{itemize}
 
-\subsection{Tabella}
-\begin{table}[htbp]
-  \centering
-  \begin{tabular}{lrr}
-    \hline
-    Strumento & Prima colonna & Seconda colonna \\
-    \hline
-    Editor    & 1             & 2                 \\
-    Compilatore & 3           & 4                 \\
-    \hline
-  \end{tabular}
-  \caption{Tabella di esempio.}
-  \label{tab:esempio}
-\end{table}
-La tabella~\ref{tab:esempio} mostra dati fittizi.
-
-\subsection{Figura senza file esterni}
-\begin{figure}[htbp]
-  \centering
-  \fbox{\rule{0.7\linewidth}{0.35\linewidth}}
-  \caption{Segnaposto grafico che non richiede file immagine.}
-  \label{fig:segnaposto}
-\end{figure}
-
-\subsection{Matematica}
 \begin{equation}
   \label{eq:demo}
-  \int_{0}^{1} x^{2} \, dx = \frac{1}{3}
+  \int_0^1 x^2 \, dx = \frac{1}{3}
 \end{equation}
-L'equazione~\eqref{eq:demo} è un riferimento interno.
 
-\section{Conclusioni}
-Se il PDF viene generato e mostrato nel pannello destro, tutto funziona.
+Prova a cliccare sul riferimento \eqref{eq:demo}: l'editor salta alla
+riga dell'etichetta. Poi introduci un errore (per esempio scrivi
+\verb|\comandonondefinito|) e ricompila: il problema apparirà nell'elenco
+in basso.
+
+\section{Bibliografia}
+Una citazione di esempio: \cite{esempio2024}.
 
 \bibliographystyle{plain}
 \bibliography{bibliography}

@@ -1,9 +1,17 @@
-/**
- * Registro (vuoto) dei provider di collaborazione.
- * In questa fase l'editor è completamente locale e offline: nessun provider
- * viene registrato. Le interfacce vivono in `types.ts` come extension point.
- */
-export * from './types';
+// Collaboration extension points (see `providers.ts`).
+//
+// Milestone 1 exports the interfaces only — no implementation, no network
+// code, no runtime behaviour. A future milestone will add a provider
+// registry here (e.g. `registerProvider(...)` / `getProviders()`).
 
-// Nessuna implementazione: vedi `types.ts` per i contratti futuri.
-export const registeredProviders: [] = [];
+export type {
+  CollabContext,
+  CollabPeer,
+  CollabStatus,
+  CollabUser,
+  CollaborationProvider,
+  DocumentSyncProvider,
+  PresenceProvider,
+  ProjectSyncProvider,
+  RemoteDocumentChange,
+} from "./providers";

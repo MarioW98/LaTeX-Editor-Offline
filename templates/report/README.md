@@ -1,9 +1,9 @@
-# Modello Report
+# Modello «Relazione»
 
-Modello minimale per una relazione con capitoli, indice e bibliografia.
+Relazione tecnica con copertina automatica, indice, capitoli, figura
+segnaposto, tabella e bibliografia.
 
-- `main.tex` — documento principale;
-- `bibliography.bib` — bibliografia;
-- compila con `pdflatex` (o `latexmk -pdf`), la bibliografia richiede `bibtex`.
+- File principale: `main.tex`
+- Motore consigliato: `pdflatex`
 
-Creato da LaTeX Editor Offline. Contenuto originale, uso libero.
+Contenuto originale, libero da usare e modificare.

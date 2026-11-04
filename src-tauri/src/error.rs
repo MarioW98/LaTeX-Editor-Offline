@@ -1,80 +1,45 @@
-//! Errori applicativi condivisi tra i comandi Tauri.
+//! Application error type.
 //!
-//! Ogni variante viene serializzata come oggetto `{ code, message }` in modo
-//! che il frontend riceva sempre un errore strutturato e mostrabile.
+//! Tauri commands return `AppResult<T>`; the error is serialized as a plain
+//! string so the frontend always receives a readable message in Italian.
 
-use serde::{Serialize, Serializer};
+use serde::Serialize;
 
 #[derive(Debug, thiserror::Error)]
 pub enum AppError {
-    #[error("nessun progetto aperto")]
-    NoProject,
-
-    #[error("percorso fuori dai limiti del progetto: {0}")]
-    Outside(String),
-
-    #[error("percorso non valido: {0}")]
-    InvalidPath(String),
-
-    #[error("elemento non trovato: {0}")]
-    NotFound(String),
-
-    #[error("elemento già esistente: {0}")]
-    Exists(String),
-
-    #[error("una build è già in corso")]
-    BuildRunning,
-
-    #[error("impostazione non valida: {0}")]
-    Invalid(String),
-
-    #[error("errore di I/O: {0}")]
+    #[error("Errore di I/O: {0}")]
     Io(#[from] std::io::Error),
 
-    #[error("errore JSON: {0}")]
+    #[error("Il percorso è fuori dalla cartella del progetto: {0}")]
+    OutsideProject(String),
+
+    #[error("Percorso non valido: {0}")]
+    InvalidPath(String),
+
+    #[error("Non trovato: {0}")]
+    NotFound(String),
+
+    #[error("JSON non valido: {0}")]
     Json(#[from] serde_json::Error),
-}
 
-impl AppError {
-    fn code(&self) -> &'static str {
-        match self {
-            AppError::NoProject => "no_project",
-            AppError::Outside(_) => "outside_project",
-            AppError::InvalidPath(_) => "invalid_path",
-            AppError::NotFound(_) => "not_found",
-            AppError::Exists(_) => "exists",
-            AppError::BuildRunning => "build_running",
-            AppError::Invalid(_) => "invalid",
-            AppError::Io(_) => "io",
-            AppError::Json(_) => "json",
-        }
-    }
-}
-
-impl From<crate::fs::sandbox::SandboxError> for AppError {
-    fn from(e: crate::fs::sandbox::SandboxError) -> Self {
-        match e {
-            crate::fs::sandbox::SandboxError::Escape(p) => AppError::Outside(p),
-            crate::fs::sandbox::SandboxError::Absolute(p) => AppError::InvalidPath(p),
-            crate::fs::sandbox::SandboxError::OutsideRoot(p) => AppError::Outside(p),
-        }
-    }
+    #[error("{0}")]
+    Message(String),
 }
 
 impl Serialize for AppError {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
-        S: Serializer,
+        S: serde::Serializer,
     {
-        #[derive(Serialize)]
-        #[serde(rename_all = "camelCase")]
-        struct Encoded<'a> {
-            code: &'a str,
-            message: String,
-        }
-        serializer.serialize_some(&Encoded {
-            code: self.code(),
-            message: self.to_string(),
-        })
+        serializer.serialize_str(&self.to_string())
+    }
+}
+
+pub type AppResult<T> = Result<T, AppError>;
+
+impl AppError {
+    /// Convenience constructor for plain user-facing messages.
+    pub fn msg(text: impl Into<String>) -> Self {
+        AppError::Message(text.into())
     }
 }

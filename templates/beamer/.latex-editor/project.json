@@ -1,10 +1,7 @@
 {
-  "name": "beamer",
+  "name": "Presentazione",
   "mainFile": "main.tex",
   "engine": "pdflatex",
-  "useLatexmk": true,
-  "outputDir": ".latex-editor/build",
-  "settings": {},
-  "createdAt": 0,
-  "updatedAt": 0
+  "template": "beamer",
+  "createdWith": "LaTeX Editor Offline"
 }

@@ -1,83 +1,77 @@
-/** Status bar: stato build, motore, LaTeX rilevato, file, riga/colonna, salvataggio. */
-import { useBuildStore } from '../state/useBuildStore';
-import { useEditorStore } from '../state/useEditorStore';
-import { useProjectStore } from '../state/useProjectStore';
-import { useSettingsStore } from '../state/useSettingsStore';
-import { SunIcon, MoonIcon } from '../filetree/icons';
+import { useAppStore } from "../state/store";
+import { formatDuration, timeHHMM } from "../utils/misc";
 
-export function StatusBar(): JSX.Element {
-  const running = useBuildStore((s) => s.running);
-  const phase = useBuildStore((s) => s.phase);
-  const success = useBuildStore((s) => s.success);
-  const errCount = useBuildStore((s) => s.issues.filter((i) => i.severity === 'error').length);
-  const warnCount = useBuildStore((s) => s.issues.filter((i) => i.severity === 'warning').length);
+function StatusBar(): JSX.Element {
+  const projectName = useAppStore((s) => s.projectName);
+  const hasProject = useAppStore((s) => s.projectRoot !== null);
+  const engine = useAppStore((s) => s.projectSettings.engine);
+  const useLatexmk = useAppStore((s) => s.projectSettings.useLatexmk);
+  const latex = useAppStore((s) => s.latex);
+  const latexDetecting = useAppStore((s) => s.latexDetecting);
+  const cursor = useAppStore((s) => s.cursor);
+  const tabs = useAppStore((s) => s.tabs);
+  const build = useAppStore((s) => s.build);
+  const autosave = useAppStore((s) => s.globalSettings.autosaveEnabled);
+  const lastSavedAt = useAppStore((s) => s.lastSavedAt);
+  const statusMessage = useAppStore((s) => s.statusMessage);
 
-  const meta = useProjectStore((s) => s.meta);
-  const latex = useSettingsStore((s) => s.latex);
-  const theme = useSettingsStore((s) => s.global.theme);
-  const saveGlobal = useSettingsStore((s) => s.saveGlobal);
-
-  const activeTab = useEditorStore((s) => s.tabs.find((t) => t.path === s.activePath));
-  const cursorLine = useEditorStore((s) => s.cursorLine);
-  const cursorCol = useEditorStore((s) => s.cursorCol);
-
-  const buildClass = running
-    ? 'sb-build running'
-    : success === true
-      ? 'sb-build ok'
-      : success === false
-        ? 'sb-build fail'
-        : 'sb-build';
-
-  const latexOk =
-    latex != null && (latex.engines['latexmk'] != null || latex.engines['pdflatex'] != null);
+  const errors = build.issues.filter((i) => i.kind === "error").length;
+  const warnings = build.issues.filter((i) => i.kind === "warning").length;
 
   return (
-    <footer className="statusbar" role="status">
-      <span className={buildClass}>
-        {running ? `Build: ${phase ?? 'in corso'}…` : phase ? `Build: ${phase}` : 'Build: inattiva'}
-        {!running && (errCount > 0 || warnCount > 0) && (
-          <span className="sb-counts">
-            {' '}
-            · {errCount} errori · {warnCount} avvisi
-          </span>
-        )}
+    <footer className="statusbar">
+      <span className="sb-item" title="Progetto corrente">
+        {hasProject ? projectName : "nessun progetto"}
       </span>
-      {meta && (
-        <span className="sb-item" title="Motore e file principale del progetto">
-          {meta.engine}
-          {meta.useLatexmk ? ' · latexmk' : ''} · main: {meta.mainFile}
-        </span>
-      )}
-      <span
-        className={`sb-item${latexOk ? '' : ' sb-warn'}`}
-        title={latexOk ? 'Distribuzione LaTeX rilevata' : 'Nessun LaTeX rilevato: vedi le istruzioni nella schermata iniziale'}
-      >
-        {latex == null ? 'LaTeX: rilevamento…' : latexOk ? 'LaTeX: installato' : 'LaTeX: non trovato'}
-      </span>
-
-      <span className="sb-spacer" />
-
-      {activeTab && (
+      {hasProject && (
         <>
-          <span className="sb-item" title={activeTab.path}>
-            {activeTab.rel}
-          </span>
-          <span className="sb-item">
-            Riga {cursorLine}, Col {cursorCol}
-          </span>
-          <span className={`sb-item${activeTab.dirty ? ' sb-dirty' : ''}`}>
-            {activeTab.dirty ? '● modificato' : 'salvato'}
+          <span className="sb-item">{engine}</span>
+          <span className="sb-item" title="Usa latexmk quando disponibile">
+            latexmk: {useLatexmk ? "on" : "off"}
           </span>
         </>
       )}
-      <button
-        className="btn-icon sb-theme"
-        title={theme === 'dark' ? 'Passa al tema chiaro' : 'Passa al tema scuro'}
-        onClick={() => void saveGlobal({ theme: theme === 'dark' ? 'light' : 'dark' })}
-      >
-        {theme === 'dark' ? <SunIcon size={14} /> : <MoonIcon size={14} />}
-      </button>
+      {latexDetecting ? (
+        <span className="sb-item">rilevamento LaTeX…</span>
+      ) : latex ? (
+        <span className="sb-item" title={latex.engines.map((e) => e.version).join(" | ")}>
+          {latex.found ? latex.distribution ?? "LaTeX" : "LaTeX non trovato"}
+        </span>
+      ) : null}
+
+      {hasProject && (
+        <span className="sb-item">
+          Riga {cursor.line}, Col {cursor.col} · {tabs.length} file aperti
+        </span>
+      )}
+
+      <div className="sb-right">
+        {statusMessage && <span className="sb-item sb-msg">{statusMessage}</span>}
+        {hasProject && (
+          <span className="sb-item">
+            {build.status === "running"
+              ? "compilazione in corso…"
+              : build.status === "idle"
+                ? "pronto"
+                : build.status === "success"
+                  ? `compilazione OK${build.durationMs ? ` (${formatDuration(build.durationMs)})` : ""}${errors > 0 ? ` · ${errors} errori` : ""}${warnings > 0 ? ` · ${warnings} avvisi` : ""}`
+                  : build.status === "cancelled"
+                    ? "compilazione annullata"
+                    : `errore${errors > 0 ? ` · ${errors} errori` : ""}`}
+          </span>
+        )}
+        <span className="sb-item" title="Salvataggio automatico">
+          autosave {autosave ? "on" : "off"}
+        </span>
+        {lastSavedAt && (
+          <span className="sb-item" title="Ultimo salvataggio">
+            salvato {timeHHMM(lastSavedAt)}
+          </span>
+        )}
+        <span className="sb-item">UTF-8</span>
+      </div>
     </footer>
   );
 }
+
+export default StatusBar;

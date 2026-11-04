@@ -1,42 +1,77 @@
-% Modello "Article" — LaTeX Editor Offline
-% Contenuto originale, liberamente modificabile.
+% Modello "Articolo" — LaTeX Editor Offline
+% Contenuto segnaposto originale: libero da usare e modificare.
 \documentclass[11pt,a4paper]{article}
+
 \usepackage[T1]{fontenc}
 \usepackage[utf8]{inputenc}
 \usepackage[italian]{babel}
+\usepackage{amsmath,amssymb}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage[hidelinks]{hyperref}
 
-\title{Titolo del documento}
+\title{Titolo dell'articolo}
 \author{Nome Autore}
 \date{\today}
 
 \begin{document}
+
 \maketitle
 
 \begin{abstract}
-  Riassunto breve del documento: scopo, contesto e risultati principali.
+  Riassunto breve del documento: sostituisci questo testo segnaposto con
+  qualche riga che descriva obiettivi, metodo e risultati dell'articolo.
 \end{abstract}
 
+\tableofcontents
+
 \section{Introduzione}
-Testo introduttivo del documento. Un esempio di citazione bibliografica:
-la metodologia descritta qui è trattata in dettaglio in \cite{rossi2024}.
+Questa è la sezione introduttiva. Puoi citare un lavoro con il comando
+\cite{esempio2024} e riferirti a un'equazione con \eqref{eq:energia}.
 
 \section{Metodi}
-\begin{itemize}
-  \item primo punto della lista;
-  \item secondo punto della lista.
-\end{itemize}
+\subsection{Impostazione}
+Descrivi qui l'impostazione del problema. La notazione matematica è
+disponibile in linea, come $E = mc^2$, oppure in display:
 
 \begin{equation}
-  \label{eq:esempio}
-  E = mc^{2}
+  \label{eq:energia}
+  E = mc^2
 \end{equation}
-L'equazione~\eqref{eq:esempio} mostra un riferimento interno a un'etichetta.
+
+\subsection{Raccolta dati}
+Descrivi come sono stati raccolti i dati e con quali strumenti.
 
 \section{Risultati}
-Descrivere qui i risultati ottenuti.
+Un elenco puntato di esempio:
+
+\begin{itemize}
+  \item primo risultato osservato;
+  \item secondo risultato osservato.
+\end{itemize}
+
+Una tabella di esempio con il pacchetto \texttt{booktabs}:
+
+\begin{table}[htbp]
+  \centering
+  \caption{Tabella di esempio.}
+  \label{tab:esempio}
+  \begin{tabular}{lrr}
+    \toprule
+    Voce  & Valore A & Valore B \\
+    \midrule
+    Uno   & 1,0      & 2,0      \\
+    Due   & 3,0      & 4,0      \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+Per inserire una figura, salva un'immagine nella cartella del progetto e
+usa \texttt{\textbackslash includegraphics} dentro l'ambiente
+\texttt{figure}.
 
 \section{Conclusioni}
-Chiudere il documento riassumendo i contributi principali.
+Sostituisci con le tue conclusioni.
 
 \bibliographystyle{plain}
 \bibliography{bibliography}
