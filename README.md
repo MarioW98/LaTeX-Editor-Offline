@@ -11,26 +11,26 @@ anteprima PDF integrata. Nessun account, nessun server, nessuna telemetria.
 ## Caratteristiche (milestone 1)
 
 - **Gestione progetto**: apertura di una cartella qualsiasi, albero file con
-  creazione/rinomina/eliminazione, metadati in `.latex-editor/project.json`,
-  progetti recenti.
-- **Editor** (CodeMirror 6): evidenziazione LaTeX, più schede, completamento
-  di comandi/ambienti/etichette/chiavi bibliografiche, snippet che chiudono
-  gli ambienti, selezione rettangolare e multi-cursore (Ctrl+D), ricerca
-  (Ctrl+F), Ctrl+S, salvataggio automatico con ritardo configurabile,
-  rilevamento delle modifiche esterne.
-- **Navigazione**: clic su `\ref{...}` per saltare alla `\label{...}`
-  corrispondente (anche su file non aperti).
+  creazione/rinomina/eliminazione, impostazioni per progetto in
+  `.latex-editor/settings.json`, progetti recenti nelle impostazioni app.
+- **Editor** (CodeMirror 6): evidenziazione LaTeX originale (tokenizzatore
+  StreamLanguage), più schede con indicatore «non salvato», completamento dei
+  comandi `\` più comuni (Ctrl+spazio), ricerca nel file (Ctrl+F),
+  cronologia annulla/rifai, piegatura del codice, ritorno a capo, Ctrl+S,
+  salvataggio automatico con ritardo configurabile (1200 ms), multi-cursore e
+  selezione rettangolare.
 - **Compilazione**: rilevamento della distribuzione LaTeX, motori
   pdflatex/xelatex/lualatex, uso di `latexmk` quando disponibile con fallback
-  a pipeline a passate (motore → biber/bibtex → motore → fino a 3 ripetizioni
-  se il log le richiede), output in `.latex-editor/build`, compilazione
-  cancellabile, log in streaming, elenco «Problemi» cliccabile.
+  a pipeline a passate (motore → biber/bibtex → motore → motore), output in
+  `.latex-editor/build`, compilazione cancellabile, log in streaming, errori
+  con file:linea cliccabili.
 - **Anteprima PDF** (PDF.js): aggiornata a ogni compilazione, zoom, adatta
   alla larghezza, navigazione pagine, ricarica manuale; in caso di errore
   resta a schermo l'ultimo PDF valido con un avviso.
 - **Interfaccia**: quattro pannelli (albero · editor · output · PDF),
-  pannelli laterali e inferiore richiudibili, tema scuro e chiaro, barra di
-  stato.
+  pannelli laterale e inferiore richiudibili, tema scuro (le variabili per il
+  tema chiaro sono già in `styles/theme.css`, pronte per un futuro selettore),
+  barra di stato.
 - **Estensione futura della collaborazione**: `src/collab/` contiene solo le
   interfacce (`CollaborationProvider`, `PresenceProvider`,
   `DocumentSyncProvider`, `ProjectSyncProvider`) — nessuna implementazione,
@@ -59,7 +59,6 @@ npm run tauri dev  # avvia l'app in modalità sviluppo
 Altri comandi utili:
 
 ```bash
-npm run typecheck  # solo controllo tipi TypeScript
 npm run build      # build del frontend (tsc + vite build)
 ```
 
@@ -124,21 +123,22 @@ Il workflow `.github/workflows/build.yml` è già configurato:
 └───────────────────────────────────────────────────────────────┘
 ```
 
-- **Flusso di compilazione**: `start_build` valida i parametri, risolve gli
-  eseguibili e avvia un task asincrono; l'output arriva nel frontend
-  riga per riga con l'evento `build://output`; alla fine l'evento
-  `build://finished` porta problemi (dal parser del `.log`) e percorso del
-  PDF. `cancel_build` termina il processo corrente.
-- **Sicurezza**: ogni percorso proveniente dalla UI viene validato e
-  confinato nella cartella del progetto (canonicalizzazione + controllo di
-  contenimento, quindi anche i link simbolici non sfuggono); i percorsi
-  relativi rifiutano `..`; il motore è scelto da una whitelist; niente
-  esecuzione di shell, niente rete. `-shell-escape` è **disattivato** per
-  impostazione predefinita e, se attivato, viene mostrato un avviso.
+- **Flusso di compilazione**: `start_build` valida i parametri, risolve il
+  file principale e avvia un thread di monitoraggio; l'output arriva nel
+  frontend riga per riga con l'evento `build-output`; alla fine l'evento
+  `build-finished` porta esito, durata e percorso del PDF. `cancel_build`
+  termina il processo corrente.
+- **Sicurezza**: ogni percorso proveniente dalla UI viene ricomposto
+  componente per componente e i componenti assoluti e `..` vengono
+  rifiutati, quindi ogni accesso resta confinato nella cartella del progetto
+  scelta; il motore è scelto da una whitelist (pdflatex/xelatex/lualatex);
+  niente esecuzione di shell arbitrarie, niente rete. `-shell-escape` è
+  **disattivato** per impostazione predefinita e l'interfaccia ne spiega i
+  rischi quando lo attivi.
 - **Dati**: i progetti restano normali cartelle su disco
-  (`.latex-editor/project.json`, `.latex-editor/settings.json`,
-  output in `.latex-editor/build/`). Nessun formato proprietario: i file
-  `.tex` restano tali.
+  (`.latex-editor/settings.json` per progetto, output in
+  `.latex-editor/build/`). Nessun formato proprietario: i file `.tex` restano
+  tali.
 
 ## Struttura del repository
 
@@ -150,37 +150,35 @@ latex-editor-offline/
 ├── templates/{article,report,book,beamer,thesis}/
 ├── scripts/generate_icons.py        # rigenera le icone originali
 ├── src/
-│   ├── main.tsx  App.tsx  path-independent UI entry
-│   ├── components/   Toolbar, StatusBar, dialoghi
+│   ├── main.tsx  App.tsx  api.ts (layer IPC tipizzato: 16 comandi)
+│   ├── components/   TopBar, StatusBar, Welcome, SettingsDialog
 │   ├── filetree/     albero dei file + menu contestuale
-│   ├── editor/       CodeMirror 6 (linguaggio, completamenti, schede)
-│   ├── pdf/          anteprima PDF.js
-│   ├── features/     project (benvenuto/nuovo), build (output), settings
-│   ├── state/        store Zustand + autosave
-│   ├── tauri/        layer IPC tipizzato (comandi + eventi)
+│   ├── editor/       EditorPane (schede) + latex.ts (linguaggio, tema,
+│   │                 evidenziazione, completamenti — tutto originale)
+│   ├── build/        pannello output: log, contatori, errori cliccabili
+│   ├── pdf/          anteprima PDF.js (zoom, adatta, ricarica)
+│   ├── features/     templates.ts (i 5 modelli originali)
+│   ├── state/        store Zustand (tab, buffer, build, impostazioni)
 │   ├── collab/       SOLO interfacce per la collaborazione futura
-│   ├── types/  utils/  styles/
+│   ├── styles/  types.ts  vite-env.d.ts
 └── src-tauri/
-    ├── Cargo.toml  tauri.conf.json  capabilities/default.json
+    ├── Cargo.toml  Cargo.lock  tauri.conf.json  capabilities/default.json
     ├── icons/      PNG/ICO/ICNS originali
     └── src/
-        ├── main.rs  lib.rs
-        ├── error.rs  sandbox.rs  settings.rs  state.rs
-        ├── latex.rs        (rilevamento distribuzione)
-        ├── log_parser.rs   (problemi dal .log)
-        ├── build_engine.rs (latexmk / pipeline, cancellabile)
-        ├── templates.rs    (modelli incorporati con include_str!)
-        └── commands/       (fs, impostazioni, latex, build, template)
+        ├── main.rs     (finestra + registro dei 16 comandi)
+        ├── error.rs  state.rs
+        └── commands/
+            ├── project.rs   (fs sandbox + selezione cartella via rfd)
+            ├── latex.rs    (rilevamento, pipeline build, log, PDF bytes)
+            └── settings.rs (impostazioni app + progetto)
 ```
 
 ### Comandi Tauri esposti
 
-`open_project`, `read_file_tree`, `read_file`, `write_file`, `create_entry`,
-`rename_entry`, `delete_entry`, `stat_file`, `read_pdf_bytes`,
-`get_global_settings`, `save_global_settings`, `get_project_settings`,
-`save_project_settings`, `detect_latex_installation`, `start_build`,
-`cancel_build`, `read_build_output`, `get_built_pdf_path`, `list_templates`,
-`create_project_from_template`.
+`select_project_folder`, `read_file_tree`, `read_file`, `write_file`,
+`create_item`, `rename_item`, `delete_item`, `detect_latex`, `start_build`,
+`cancel_build`, `read_build_log`, `read_pdf_bytes`, `get_project_settings`,
+`save_project_settings`, `get_app_settings`, `save_app_settings`.
 
 ## Scorciatoie da tastiera
 
@@ -188,44 +186,45 @@ latex-editor-offline/
 | --- | --- |
 | Ctrl/Cmd+S | salva il file attivo |
 | Ctrl/Cmd+F | ricerca nel file |
-| Ctrl/Cmd+D | aggiunge il cursore sull'occorrenza successiva |
 | Ctrl/Cmd+Z / Ctrl/Cmd+Y | annulla / rifai |
 | Tab | indentazione (fuori dai completamenti) |
-| Ctrl+F9 | compila il progetto |
+| F5 | compila il progetto |
 | Ctrl+spazio | suggerimenti di completamento |
-| clic su `\ref{...}` | salta alla `\label{...}` |
+| clic su una riga `file:linea` d'errore | porta il cursore sul punto giusto |
 
 ## Decisioni progettuali documentate
 
 1. **Zustand** invece di React Context: aggiornamenti selettivi senza
    re-render globali, API minimale, dipendenza di ~1 kB.
-2. **Tema scuro e chiaro** (le specifiche permettevano entrambi): variabili
-   CSS + tema CodeMirror corrispondente.
-3. **Selezione cartelle con il plugin dialog ufficiale** (livello UI)
-   invece di un comando custom: è il gestore multipiattaforma del thread
-   principale più robusto nelle versioni attuali di Tauri.
+2. **Tema scuro** con variabili CSS (`theme.css` contiene già le variabili
+   per il tema chiaro: un futuro selettore non richiede modifiche al codice
+   dei componenti).
+3. **Selezione cartelle con `rfd` lato Rust** (comando
+   `select_project_folder` con `spawn_blocking`): dialogo nativo di sistema
+   senza plugin JavaScript, zero permessi extra in `capabilities/` e zero
+   rete.
 4. **PDF via IPC binaria raw** (`tauri::ipc::Response`) invece del
    protocollo asset: nessuna configurazione di protocollo, trasferimento
    binario efficiente e cache-busting implicito (il file viene riletto dal
    disco a ogni caricamento).
-5. **Modelli incorporati con `include_str!`**: un'unica fonte di verità nel
-   repository, niente risorse da imballare.
-6. **Parser del log euristico** (file:line, `!`, `l.NN`, avvisi comuni):
-   copre i casi principali; il tracciamento completo dello stack dei file
-   TeX è rimandato a una milestone successiva.
+5. **Modelli in TypeScript** (`src/features/templates.ts`): un'unica fonte
+   di verità lato UI, scritti da zero; la cartella `templates/` del repo ne
+   conserva una copia in formato progetto.
+6. **Classificazione del log in streaming** (righe `file:linea` degli
+   errori, righe che iniziano con `!`, avvisi comuni): copre i casi
+   principali; il tracciamento completo dello stack dei file TeX è rimandato
+   a una milestone successiva.
 7. **`webviewInstallMode: offlineInstaller` su Windows** per rispettare il
    vincolo «completamente offline» (a costo di un installer più grande;
    alternativa documentata sopra).
 8. **UI in italiano**, codice e identificatori in inglese (convenzione da
    toolchain); i messaggi Rust per l'utente sono in italiano.
-9. **Autosave attivo di default** (1500 ms), disattivabile; il salvataggio
-   è atomico (file temporaneo + rinomina).
-10. **Timeout di 600 s per passo** di compilazione per non lasciare processi
-    appesi in eterno.
-11. **Beamer incluso tra i modelli** ma richiede il pacchetto `beamer`
+9. **Autosave attivo di default** (1200 ms), disattivabile dalle
+   impostazioni del progetto.
+10. **Beamer incluso tra i modelli** ma richiede il pacchetto `beamer`
     (presente nelle distribuzioni complete; segnalato nel README del
     modello).
-12. **Nessun aggiornamento automatico dell'app**: coerente con il vincolo
+11. **Nessun aggiornamento automatico dell'app**: coerente con il vincolo
     offline.
 
 ## Checklist di collaudo manuale
@@ -241,45 +240,40 @@ latex-editor-offline/
    NON cambia su disco; riattivalo e verifica il salvataggio automatico.
 6. «Compila»: il registro si riempie in tempo reale e il PDF compare a
    destra; naviga le pagine, prova zoom e «Adatta».
-7. Introduci `\comandonondefinito` e ricompila: nell'elenco Problemi
-   compare la riga corrispondente; un clic porta il cursore sul punto
-   giusto e il PDF precedente resta visibile con l'avviso.
+7. Introduci `\comandonondefinito` e ricompila: nel pannello output compare
+   la riga d'errore corrispondente (contatore incluso); un clic sulla riga
+   `file:linea` porta il cursore sul punto giusto e il PDF precedente resta
+   visibile.
 8. Cancella la riga sbagliata, ricompila e verifica lo stato «successo».
-9. Clic su `\eqref{eq:demo}` nel testo: il cursore salta alla riga
-   dell'etichetta.
-10. Tasto destro su un file nell'albero: Rinomina → la scheda aperta segue
-    il nuovo nome; Elimina → la scheda si chiude.
-11. Modifica `main.tex` con un altro editor mentre è aperto qui: al ritorno
-    in primo piano appare il dialogo «File modificati all'esterno».
-12. «Nuovo progetto» → modello «Articolo» → cartella e nome: il progetto si
+9. Tasto destro su un file nell'albero: Rinomina → la scheda aperta segue
+   il nuovo nome; Elimina → la scheda si chiude.
+10. «Nuovo progetto» → modello «Articolo» → cartella e nome: il progetto si
     apre e compila al primo colpo.
-13. Impostazioni: cambia tema, dimensione carattere e ritorno a capo:
-    l'editor si aggiorna al volo; dopo riavvio le preferenze restano.
-14. Con LaTeX assente dal PATH (o con la cartella «aggiuntiva» vuota):
-    il riquadro mostra le indicazioni di installazione senza scaricare nulla.
-15. `npm run tauri build` sulla tua piattaforma: gli installer compaiono in
+11. Impostazioni: cambia motore, dimensione carattere e autosave: l'editor
+    si aggiorna al volo; dopo riavvio le preferenze del progetto restano.
+12. Con LaTeX assente dal PATH: il riquadro mostra le indicazioni di
+    installazione senza scaricare nulla.
+13. `npm run tauri build` sulla tua piattaforma: gli installer compaiono in
     `src-tauri/target/release/bundle/` e l'app installata si avvia.
 
 ## Limitazioni note (milestone 1)
 
-- Il parser del log è euristico: gli errori `! ...` senza riga `l.N` non
-  riportano il file (viene usato il file principale); nessun tracciamento
-  dello stack dei file aperti.
-- Etichette e chiavi bibliografiche provengono dai file **aperti** (il
-  salto `\ref` cerca però in tutto il progetto).
+- La classificazione del log è euristica: gli errori `! ...` senza riga
+  `file:linea` non riportano il file; nessun tracciamento dello stack dei
+  file aperti.
+- I completamenti sono un elenco statico di comandi `\` comuni: non
+  estraggono etichette né chiavi bibliografiche dai file aperti.
 - Niente SyncTeX: nessun clic sul PDF per andare alla sorgente (e viceversa).
-- Niente evidenziazione della struttura (outline), piegatura del codice,
-  ricerca globale su più file, controllo ortografico.
+- Niente outline/struttura del documento, ricerca globale su più file,
+  controllo ortografico, rilevamento di modifiche esterne ai file.
 - PDF.js senza `cmaps`: alcuni PDF con testi CJK possono non estrarre il
   testo (la resa resta di solito corretta).
 - Una sola finestra; nessun aggiornamento automatico.
-- Il bundle JavaScript è unico (≈1,1 MB + worker PDF.js): irrilevante su
+- Il bundle JavaScript è unico (≈0,9 MB + worker PDF.js): irrilevante su
   desktop, ma suddividibile in futuro.
-- La verifica Rust in ambiente di sviluppo è stata eseguita con
-  `cargo check` (Tauri 2.12, zero errori e zero avvisi) usando stub
-  pkg-config per le librerie grafiche assenti; il linking finale e
-  l'avvio dell'app richiedono le librerie reali (webkit2gtk-4.1, GTK 3)
-  — proprio ciò che la CI installa su ogni sistema operativo.
+- Il lato Rust è stato verificato con una revisione statica completa
+  (coerenza moduli, crate, firme comandi/frontend, `Cargo.lock`) e viene
+  compilato dalla CI su Windows, Linux e macOS a ogni push.
 
 ## Prossimi passi (roadmap)
 
@@ -299,13 +293,12 @@ latex-editor-offline/
 
 | Dipendenza | Licenza |
 | --- | --- |
-| tauri, tauri-plugin-dialog | MIT o Apache-2.0 |
-| tokio, serde, serde_json | MIT |
-| which | MIT |
+| tauri, tauri-build, serde, serde_json | MIT o Apache-2.0 |
+| rfd (dialoghi nativi) | MIT o Apache-2.0 |
 | regex | MIT o Apache-2.0 |
-| thiserror | MIT o Apache-2.0 |
+| once_cell | MIT o Apache-2.0 |
 | react, react-dom | MIT |
-| codemirror (@codemirror/*, theme-one-dark) | MIT |
+| codemirror (@codemirror/*, @lezer/highlight) | MIT |
 | pdfjs-dist | Apache-2.0 |
 | zustand | MIT |
 | vite, @vitejs/plugin-react | MIT |
