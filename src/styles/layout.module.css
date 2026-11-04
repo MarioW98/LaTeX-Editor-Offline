@@ -1,0 +1,299 @@
+.app {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.topBar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  height: 46px;
+  padding: 0 12px;
+  background: var(--panel);
+  border-bottom: 1px solid var(--border);
+  flex: 0 0 auto;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.brandMark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
+  background: #1e222c;
+  color: #eef2fa;
+  font-family: Georgia, "Times New Roman", serif;
+  font-weight: 700;
+  border-bottom: 2px solid var(--accent);
+}
+
+.brandName {
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.projectName {
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 220px;
+}
+
+.dirtyBadge {
+  color: var(--yellow);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.topActions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: nowrap;
+}
+
+.btn {
+  white-space: nowrap;
+}
+
+.btnPrimary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #0e1116;
+  font-weight: 600;
+}
+
+.btnDanger {
+  background: var(--red);
+  border-color: var(--red);
+  color: #14090a;
+  font-weight: 600;
+}
+
+.btnActive {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.select {
+  padding: 4px 6px;
+}
+
+.separator {
+  width: 1px;
+  height: 20px;
+  background: var(--border);
+  margin: 0 4px;
+}
+
+.mainRow {
+  display: flex;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+/* ---- welcome screen ---- */
+
+.welcome {
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: auto;
+}
+
+.welcomeCard {
+  max-width: 640px;
+  padding: 32px;
+}
+
+.welcomeTitle {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 24px;
+  margin: 0 0 8px;
+}
+
+.welcomeSub {
+  color: var(--muted);
+  line-height: 1.55;
+}
+
+.welcomeActions {
+  display: flex;
+  gap: 10px;
+  margin: 20px 0;
+  flex-wrap: wrap;
+}
+
+.templateBlock {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 16px;
+  margin-bottom: 20px;
+}
+
+.templateGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: 8px;
+  margin: 12px 0;
+}
+
+.templateCard {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  text-align: left;
+  padding: 10px;
+  height: 100%;
+}
+
+.templateCard span {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.templateCardActive {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.templateForm {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.latexCheck h2 {
+  font-size: 15px;
+  margin-bottom: 6px;
+}
+
+.latexCheck ul {
+  margin: 6px 0;
+  padding-left: 18px;
+  color: var(--muted);
+}
+
+.warnText {
+  color: var(--yellow);
+}
+
+.errorText {
+  color: var(--red);
+}
+
+/* ---- settings dialog ---- */
+
+.overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(10, 11, 14, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 50;
+}
+
+.dialog {
+  width: 460px;
+  max-width: calc(100vw - 40px);
+  max-height: calc(100vh - 60px);
+  overflow: auto;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 20px;
+}
+
+.dialog h2 {
+  margin-top: 0;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  margin: 12px 0;
+}
+
+.fieldCheckbox {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 10px 0;
+  line-height: 1.4;
+}
+
+.dialogActions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+/* ---- status bar ---- */
+
+.statusBar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 26px;
+  padding: 0 12px;
+  background: var(--panel);
+  border-top: 1px solid var(--border);
+  color: var(--muted);
+  font-size: 12px;
+  flex: 0 0 auto;
+}
+
+.dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  display: inline-block;
+}
+
+.dotGreen {
+  background: var(--green);
+}
+
+.dotYellow {
+  background: var(--yellow);
+}
+
+.dotRed {
+  background: var(--red);
+}
+
+.statusSep {
+  color: var(--border);
+}
+
+.statusSpacer {
+  flex: 1;
+}
+
+.rootPath {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 45%;
+  direction: rtl;
+  text-align: left;
+}

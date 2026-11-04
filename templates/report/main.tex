@@ -1,72 +1,30 @@
-% Modello "Relazione" — LaTeX Editor Offline
-% Contenuto segnaposto originale: libero da usare e modificare.
-\documentclass[12pt,a4paper]{report}
-
+\documentclass[11pt,a4paper]{report}
 \usepackage[T1]{fontenc}
 \usepackage[utf8]{inputenc}
-\usepackage[italian]{babel}
-\usepackage{amsmath,amssymb}
+\usepackage{amsmath}
 \usepackage{graphicx}
-\usepackage{booktabs}
-\usepackage[hidelinks]{hyperref}
+\usepackage{hyperref}
 
-\title{Relazione di esempio}
-\author{Nome Autore}
+\title{Rapporto tecnico}
+\author{Nome Cognome}
 \date{\today}
 
 \begin{document}
-
 \maketitle
-
-\begin{abstract}
-  Sommario della relazione: obiettivo, contesto, attività svolta e
-  risultati principali, in mezza pagina al massimo.
-\end{abstract}
-
 \tableofcontents
 
 \chapter{Introduzione}
-Descrivi lo scopo della relazione e il contesto in cui nasce il lavoro.
-Una citazione di esempio: \cite{esempio2024}.
+Obiettivi del rapporto \cite{lamport1994}.
+
+\section{Contesto}
+Descrizione del contesto.
 
 \chapter{Analisi}
-\section{Requisiti}
-Elenca i requisiti osservati.
-
-\section{Vincoli}
-Descrivi i vincoli tecnici o organizzativi.
-
-\chapter{Attività svolta}
-Descrivi le fasi del lavoro. Una figura si inserisce così:
-
-\begin{figure}[htbp]
-  \centering
-  % \includegraphics[width=0.7\linewidth]{esempio.png}
-  \fbox{\parbox[c][4cm][c]{0.7\linewidth}{\centering spazio per una figura}}
-  \caption{Figura segnaposto.}
-  \label{fig:segnaposto}
-\end{figure}
-
-Un riferimento alla figura: figura~\ref{fig:segnaposto}.
-
-\chapter{Risultati}
-Riporta i risultati, eventualmente con una tabella:
-
-\begin{table}[htbp]
-  \centering
-  \caption{Risultati di esempio.}
-  \begin{tabular}{lrr}
-    \toprule
-    Prova & Prima & Dopo \\
-    \midrule
-    A     & 10    & 12   \\
-    B     & 20    & 25   \\
-    \bottomrule
-  \end{tabular}
-\end{table}
+\section{Dati}
+Presentazione dei dati.
 
 \chapter{Conclusioni}
-Chiudi la relazione con le osservazioni finali e i possibili sviluppi.
+Sintesi dei risultati.
 
 \bibliographystyle{plain}
 \bibliography{bibliography}

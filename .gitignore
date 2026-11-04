@@ -1,21 +1,18 @@
-# Node / frontend
+# Dependencies
 node_modules/
+
+# Build outputs
 dist/
+release/
 
 # Rust / Tauri
 src-tauri/target/
 src-tauri/gen/schemas/
 
-# Build artefacts of LaTeX projects
-*.aux
-*.log
-*.synctex.gz
+# Editor build artifacts inside demo projects
+.latex-editor/build/
 
-# OS junk
+# Logs and OS noise
+*.log
 .DS_Store
 Thumbs.db
-
-# Editors
-*.swp
-.idea/
-.vscode/

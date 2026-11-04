@@ -1,57 +1,28 @@
-% Modello "Libro" — LaTeX Editor Offline
-% Contenuto segnaposto originale: libero da usare e modificare.
 \documentclass[11pt,a4paper]{book}
-
 \usepackage[T1]{fontenc}
 \usepackage[utf8]{inputenc}
-\usepackage[italian]{babel}
-\usepackage{amsmath,amssymb}
-\usepackage{graphicx}
-\usepackage[hidelinks]{hyperref}
+\usepackage{amsmath}
+\usepackage{hyperref}
 
 \title{Titolo del libro}
-\author{Nome Autore}
+\author{Nome Cognome}
 \date{\today}
 
 \begin{document}
-
 \frontmatter
 \maketitle
 \tableofcontents
 
 \mainmatter
-
 \chapter{Primo capitolo}
-Apri qui il tuo libro. Struttura il testo in paragrafi coerenti e usa le
-note a margine con parsimonia, per esempio\footnote{una nota a pié di
-pagina di esempio}.
-
-\section{Una sezione}
-Il testo di una sezione di esempio.
+Testo del primo capitolo \cite{knuth1986}.
 
 \chapter{Secondo capitolo}
-Ogni capitolo riparte da pagina dispari per default nella classe
-\texttt{book}.
-
-\section{Un'altra sezione}
-Altro testo di esempio con un elenco:
-
-\begin{enumerate}
-  \item primo punto;
-  \item secondo punto.
-\end{enumerate}
-
-\chapter{Terzo capitolo}
-Chiudi il corpo del libro.
+Testo del secondo capitolo.
 
 \backmatter
-
 \appendix
-
 \chapter{Appendice}
-Materiale di supporto, dati o dimostrazioni lunghe.
-
-\bibliographystyle{plain}
-\bibliography{bibliography}
+Materiale aggiuntivo.
 
 \end{document}

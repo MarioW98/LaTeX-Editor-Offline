@@ -1,725 +1,407 @@
-// Application store (Zustand). Single source of truth for:
-// current project, open tabs, build state, settings, latex detection and UI.
-//
-// Layering (no circular dependencies):
-//   UI components -> store -> ipc (typed Tauri layer) -> Rust commands
-
 import { create } from "zustand";
-
-import * as ipc from "../tauri/ipc";
-import type {
-  BuildFinishedEvent,
-  BuildLineEvent,
-  BuildStatus,
-  FileEntry,
-  GlobalSettings,
-  LatexReport,
-  LogIssue,
-  ProjectInfo,
-  ProjectSettings,
-  TemplateInfo,
-  ThemeName,
-} from "../types";
+import { api } from "../api";
 import {
-  basename,
-  escapeRegExp,
-  flattenFiles,
-} from "../utils/misc";
-import { cancelAll, cancelAutosave, scheduleAutosave } from "./autosave";
+  DEFAULT_PROJECT_SETTINGS,
+  type AppSettings,
+  type Engine,
+  type FileNode,
+  type LatexStatus,
+  type LogLine,
+  type ProjectSettings,
+} from "../types";
+import { TEMPLATES } from "../features/templates";
 
-export interface Tab {
+interface OpenTab {
   path: string;
-  name: string;
-  content: string;
-  savedContent: string;
-  openedMtime: number;
-  /** bumped when the content is replaced from outside (tab switch / reload) */
-  reloadToken: number;
 }
 
-export interface BuildState {
-  status: BuildStatus;
-  buildId: number | null;
-  engine: string;
-  output: string[];
-  issues: LogIssue[];
-  pdfPath: string | null;
-  /** path of the last *successful* build, kept to show it on later errors */
-  lastGoodPdfPath: string | null;
-  startedAt: number | null;
-  finishedAt: number | null;
-  durationMs: number | null;
-  message: string | null;
-}
-
-export interface PendingReveal {
+interface PendingJump {
   path: string;
   line: number;
-  token: number;
+  nonce: number;
 }
 
-export interface ExternalChange {
-  path: string;
-  name: string;
-}
-
-interface UiState {
-  leftPanel: boolean;
-  rightPanel: boolean;
-  bottomPanel: boolean;
-  bottomTab: "problems" | "log";
+export interface StoreState {
+  rootPath: string | null;
+  tree: FileNode[];
+  tabs: OpenTab[];
+  activeTab: string | null;
+  buffers: Record<string, string>;
+  dirty: Record<string, boolean>;
+  binaryPaths: Record<string, true>;
+  pendingJump: PendingJump | null;
+  settings: ProjectSettings;
+  appSettings: AppSettings;
+  latex: LatexStatus | null;
+  buildRunning: boolean;
+  buildLog: LogLine[];
+  lastBuildSuccess: boolean | null;
+  lastBuildDurationMs: number | null;
+  pdfVersion: number;
+  outputOpen: boolean;
+  pdfOpen: boolean;
+  sidebarOpen: boolean;
   settingsOpen: boolean;
-  newProjectOpen: boolean;
-}
+  welcomeAction: "none" | "template";
+  selectedTemplateId: string;
 
-interface AppStore {
-  // project
-  projectRoot: string | null;
-  projectName: string;
-  hasProjectJson: boolean;
-  tree: FileEntry[];
-  expandedDirs: Record<string, boolean>;
-
-  // tabs
-  tabs: Tab[];
-  activeTabPath: string | null;
-  cursor: { line: number; col: number };
-  pendingReveal: PendingReveal | null;
-
-  // build
-  build: BuildState;
-
-  // settings & toolchain
-  globalSettings: GlobalSettings;
-  projectSettings: ProjectSettings;
-  latex: LatexReport | null;
-  latexDetecting: boolean;
-  templates: TemplateInfo[];
-
-  // ui
-  ui: UiState;
-  statusMessage: string | null;
-  externalChanges: ExternalChange[];
-  lastSavedAt: number | null;
-
-  // actions: bootstrap / detection
   bootstrap: () => Promise<void>;
-  detectLatex: () => Promise<void>;
-
-  // actions: project
-  openProject: (root: string) => Promise<void>;
-  updateRecents: (root: string) => Promise<void>;
-  closeProject: () => void;
+  setRoot: (root: string | null) => Promise<void>;
+  openProjectFolder: () => Promise<void>;
   refreshTree: () => Promise<void>;
-  toggleDir: (path: string) => void;
-  collapseAllDirs: () => void;
-
-  // actions: tabs / files
-  openFile: (path: string, line?: number) => Promise<void>;
+  openFile: (path: string) => Promise<void>;
   closeTab: (path: string) => void;
-  activateTab: (path: string) => void;
-  setTabContent: (path: string, content: string) => void;
-  saveTab: (path?: string) => Promise<void>;
-  saveActiveTab: () => Promise<void>;
-  setCursor: (line: number, col: number) => void;
-  consumeReveal: () => PendingReveal | null;
-  openFileAtLine: (path: string, line: number) => Promise<void>;
-  jumpToLabel: (label: string) => Promise<void>;
-
-  // actions: fs operations
-  createEntry: (path: string, isDir: boolean) => Promise<void>;
-  renameEntry: (oldPath: string, newPath: string) => Promise<void>;
-  deleteEntry: (path: string) => Promise<void>;
-
-  // actions: build
-  startBuild: () => Promise<void>;
+  setActiveTab: (path: string) => void;
+  updateBuffer: (path: string, content: string) => void;
+  saveFile: (path: string) => Promise<void>;
+  jumpTo: (file: string, line: number) => Promise<void>;
+  createProjectFromTemplate: (templateId: string, projectName: string) => Promise<void>;
+  createItem: (parent: string, name: string, kind: "file" | "dir") => Promise<void>;
+  renameItem: (path: string, newName: string) => Promise<void>;
+  deleteItem: (path: string) => Promise<void>;
+  updateSettings: (patch: Partial<ProjectSettings>) => Promise<void>;
+  detectLatex: () => Promise<void>;
+  build: () => Promise<void>;
   cancelBuild: () => Promise<void>;
-  appendBuildLine: (line: BuildLineEvent) => void;
-  finishBuild: (ev: BuildFinishedEvent) => void;
-  clearBuildOutput: () => void;
-  reloadPdf: () => void;
-  pdfReloadToken: number;
-
-  // actions: settings
-  updateGlobalSettings: (patch: Partial<GlobalSettings>) => Promise<void>;
-  updateProjectSettings: (patch: Partial<ProjectSettings>) => Promise<void>;
-
-  // actions: external changes
-  checkExternalChanges: () => Promise<void>;
-  reloadExternalFiles: (paths: string[]) => Promise<void>;
-  dismissExternalChanges: () => void;
-
-  // actions: ui
-  setUi: (patch: Partial<UiState>) => void;
-  setTemplates: (list: TemplateInfo[]) => void;
-  setStatusMessage: (msg: string | null) => void;
-  toggleTheme: () => Promise<void>;
+  appendLog: (line: LogLine) => void;
+  clearLog: () => void;
+  setBuildFinished: (payload: {
+    success: boolean;
+    cancelled: boolean;
+    durationMs: number;
+  }) => void;
+  toggleOutput: () => void;
+  togglePdf: () => void;
+  toggleSidebar: () => void;
+  setSettingsOpen: (open: boolean) => void;
+  setWelcomeAction: (a: "none" | "template") => void;
+  setSelectedTemplateId: (id: string) => void;
 }
 
-function initialBuild(): BuildState {
-  return {
-    status: "idle",
-    buildId: null,
-    engine: "pdflatex",
-    output: [],
-    issues: [],
-    pdfPath: null,
-    lastGoodPdfPath: null,
-    startedAt: null,
-    finishedAt: null,
-    durationMs: null,
-    message: null,
-  };
+// Debounce timers for autosave, one per file path.
+const autosaveTimers = new Map<string, ReturnType<typeof setTimeout>>();
+
+function relToRoot(file: string, root: string): string | null {
+  let f = file.replace(/\\/g, "/");
+  const r = root.replace(/\\/g, "/").replace(/\/+$/, "");
+  if (f.startsWith(r + "/")) f = f.slice(r.length + 1);
+  while (f.startsWith("./")) f = f.slice(2);
+  if (f.includes("/.latex-editor/")) return null;
+  if (f.startsWith("/") || /^[a-zA-Z]:/.test(f)) return null;
+  return f;
 }
 
-// Output-line batching: flush at most every 100 ms to keep renders cheap.
-let pendingLines: string[] = [];
-let flushTimer: ReturnType<typeof setTimeout> | null = null;
-
-let revealToken = 0;
-let statusTimer: ReturnType<typeof setTimeout> | null = null;
-
-export const useAppStore = create<AppStore>()((set, get) => ({
-  projectRoot: null,
-  projectName: "",
-  hasProjectJson: false,
+export const useStore = create<StoreState>()((set, get) => ({
+  rootPath: null,
   tree: [],
-  expandedDirs: {},
-
   tabs: [],
-  activeTabPath: null,
-  cursor: { line: 1, col: 1 },
-  pendingReveal: null,
-
-  build: initialBuild(),
-
-  globalSettings: {
-    theme: "dark",
-    fontSize: 14,
-    wordWrap: false,
-    defaultEngine: "pdflatex",
-    autosaveEnabled: true,
-    autosaveDelayMs: 1500,
-    latexPathOverride: null,
-    recentProjects: [],
-  },
-  projectSettings: {
-    mainFile: "main.tex",
-    engine: "pdflatex",
-    outputDir: ".latex-editor/build",
-    useLatexmk: true,
-    shellEscape: false,
-  },
+  activeTab: null,
+  buffers: {},
+  dirty: {},
+  binaryPaths: {},
+  pendingJump: null,
+  settings: { ...DEFAULT_PROJECT_SETTINGS },
+  appSettings: { lastProject: null, recentProjects: [] },
   latex: null,
-  latexDetecting: false,
-  templates: [],
-
-  ui: {
-    leftPanel: true,
-    rightPanel: true,
-    bottomPanel: true,
-    bottomTab: "problems",
-    settingsOpen: false,
-    newProjectOpen: false,
-  },
-  statusMessage: null,
-  externalChanges: [],
-  lastSavedAt: null,
-
-  // ------------------------------------------------------------- bootstrap --
+  buildRunning: false,
+  buildLog: [],
+  lastBuildSuccess: null,
+  lastBuildDurationMs: null,
+  pdfVersion: 0,
+  outputOpen: true,
+  pdfOpen: true,
+  sidebarOpen: true,
+  settingsOpen: false,
+  welcomeAction: "none",
+  selectedTemplateId: "article",
 
   bootstrap: async () => {
+    get().detectLatex();
     try {
-      const g = await ipc.getGlobalSettings();
-      set({ globalSettings: g });
-    } catch (e) {
-      console.warn("Impossibile leggere le impostazioni globali:", e);
+      const app = await api.getAppSettings();
+      set({ appSettings: app });
+      if (app.lastProject && typeof app.lastProject === "string") {
+        try {
+          await get().setRoot(app.lastProject);
+          return;
+        } catch {
+          /* project folder vanished: fall through to welcome screen */
+        }
+      }
+    } catch {
+      /* settings unavailable: show welcome */
     }
-    void get().detectLatex();
+  },
+
+  setRoot: async (root) => {
+    if (!root) {
+      set({ rootPath: null, tree: [], tabs: [], activeTab: null, buffers: {}, dirty: {}, binaryPaths: {} });
+      return;
+    }
+    const tree = await api.readFileTree(root);
+    let settings: ProjectSettings = { ...DEFAULT_PROJECT_SETTINGS };
     try {
-      const templates = await ipc.listTemplates();
-      set({ templates });
+      const s = await api.getProjectSettings(root);
+      if (s && typeof s === "object") {
+        settings = { ...DEFAULT_PROJECT_SETTINGS, ...s };
+      }
+    } catch {
+      /* keep defaults */
+    }
+    set({
+      rootPath: root,
+      tree,
+      settings,
+      tabs: [],
+      activeTab: null,
+      buffers: {},
+      dirty: {},
+      binaryPaths: {},
+      buildLog: [],
+      lastBuildSuccess: null,
+      welcomeAction: "none",
+    });
+    get().detectLatex();
+    // Persist as last project (best effort).
+    const current = get().appSettings;
+    const next: AppSettings = {
+      lastProject: root,
+      recentProjects: [root, ...current.recentProjects.filter((p) => p !== root)].slice(0, 10),
+    };
+    set({ appSettings: next });
+    api.saveAppSettings(next).catch(() => undefined);
+    // Open the main file if present.
+    try {
+      await get().openFile(settings.mainFile);
+    } catch {
+      /* main file missing: leave tabs empty */
+    }
+  },
+
+  openProjectFolder: async () => {
+    const picked = await api.selectProjectFolder();
+    if (picked) await get().setRoot(picked);
+  },
+
+  refreshTree: async () => {
+    const root = get().rootPath;
+    if (!root) return;
+    try {
+      const tree = await api.readFileTree(root);
+      set({ tree });
+    } catch {
+      /* ignore */
+    }
+  },
+
+  openFile: async (path) => {
+    const root = get().rootPath;
+    if (!root) return;
+    const existing = get().tabs.find((t) => t.path === path);
+    if (existing) {
+      set({ activeTab: path });
+      return;
+    }
+    const fc = await api.readFile(root, path);
+    set((s) => ({
+      tabs: [...s.tabs, { path }],
+      activeTab: path,
+      buffers: { ...s.buffers, [path]: fc.content },
+      dirty: { ...s.dirty, [path]: false },
+      binaryPaths: fc.binary ? { ...s.binaryPaths, [path]: true } : s.binaryPaths,
+    }));
+  },
+
+  closeTab: (path) => {
+    set((s) => {
+      const tabs = s.tabs.filter((t) => t.path !== path);
+      let activeTab = s.activeTab;
+      if (activeTab === path) {
+        const idx = s.tabs.findIndex((t) => t.path === path);
+        activeTab = tabs[Math.min(idx, tabs.length - 1)]?.path ?? null;
+      }
+      return { tabs, activeTab };
+    });
+  },
+
+  setActiveTab: (path) => set({ activeTab: path }),
+
+  updateBuffer: (path, content) => {
+    set((s) => ({
+      buffers: { ...s.buffers, [path]: content },
+      dirty: { ...s.dirty, [path]: true },
+    }));
+    const { settings, rootPath } = get();
+    if (!settings.autoSave || !rootPath) return;
+    const prev = autosaveTimers.get(path);
+    if (prev) clearTimeout(prev);
+    autosaveTimers.set(
+      path,
+      setTimeout(() => {
+        autosaveTimers.delete(path);
+        get().saveFile(path);
+      }, 1200),
+    );
+  },
+
+  saveFile: async (path) => {
+    const { rootPath, buffers } = get();
+    if (!rootPath) return;
+    const content = buffers[path];
+    if (content === undefined) return;
+    try {
+      await api.writeFile(rootPath, path, content);
+      set((s) => ({ dirty: { ...s.dirty, [path]: false } }));
+      const { settings } = get();
+      if (settings.autoBuild && path === settings.mainFile) {
+        get().build();
+      }
     } catch (e) {
-      console.warn("Impossibile leggere i modelli:", e);
+      get().appendLog({
+        tsMs: Date.now(),
+        kind: "error",
+        file: null,
+        line: null,
+        text: `salvataggio fallito (${path}): ${String(e)}`,
+      });
+    }
+  },
+
+  jumpTo: async (file, line) => {
+    const { rootPath } = get();
+    if (!rootPath) return;
+    const rel = relToRoot(file, rootPath);
+    if (!rel) return;
+    try {
+      if (!get().tabs.find((t) => t.path === rel)) {
+        await get().openFile(rel);
+      } else {
+        set({ activeTab: rel });
+      }
+      set((s) => ({
+        pendingJump: { path: rel, line, nonce: (s.pendingJump?.nonce ?? 0) + 1 },
+      }));
+    } catch {
+      /* file cannot be opened */
+    }
+  },
+
+  createProjectFromTemplate: async (templateId, projectName) => {
+    const tpl = TEMPLATES.find((t) => t.id === templateId);
+    if (!tpl) throw new Error("template sconosciuto");
+    const name = projectName.trim();
+    if (!name) throw new Error("inserisci un nome per il progetto");
+    const parent = await api.selectProjectFolder();
+    if (!parent) return;
+    const root = `${parent.replace(/[\\/]+$/, "")}/${name}`;
+    await api.createItem(parent, "", name, "dir");
+    for (const f of tpl.files) {
+      await api.writeFile(root, f.path, f.content);
+    }
+    await get().setRoot(root);
+  },
+
+  createItem: async (parent, name, kind) => {
+    const root = get().rootPath;
+    if (!root) return;
+    await api.createItem(root, parent, name, kind);
+    await get().refreshTree();
+    if (kind === "file") {
+      const path = parent ? `${parent}/${name}` : name;
+      try {
+        await get().openFile(path);
+      } catch {
+        /* ignore */
+      }
+    }
+  },
+
+  renameItem: async (path, newName) => {
+    const root = get().rootPath;
+    if (!root) return;
+    await api.renameItem(root, path, newName);
+    // If an open tab pointed at the old path, close it.
+    get().closeTab(path);
+    await get().refreshTree();
+  },
+
+  deleteItem: async (path) => {
+    const root = get().rootPath;
+    if (!root) return;
+    await api.deleteItem(root, path);
+    get().closeTab(path);
+    await get().refreshTree();
+  },
+
+  updateSettings: async (patch) => {
+    const { rootPath, settings } = get();
+    const next = { ...settings, ...patch };
+    set({ settings: next });
+    if (rootPath) {
+      try {
+        await api.saveProjectSettings(rootPath, next);
+      } catch {
+        /* best effort */
+      }
     }
   },
 
   detectLatex: async () => {
-    set({ latexDetecting: true });
     try {
-      const report = await ipc.detectLatex();
-      set({ latex: report });
-    } catch (e) {
-      console.warn("Rilevamento LaTeX fallito:", e);
-    } finally {
-      set({ latexDetecting: false });
-    }
-  },
-
-  // -------------------------------------------------------------- project --
-
-  openProject: async (root) => {
-    const info: ProjectInfo = await ipc.openProject(root);
-    cancelAll();
-    set({
-      projectRoot: info.root,
-      projectName: info.name,
-      hasProjectJson: info.hasProjectJson,
-      tree: info.tree,
-      expandedDirs: {},
-      tabs: [],
-      activeTabPath: null,
-      pendingReveal: null,
-      build: initialBuild(),
-      projectSettings: info.settings,
-    });
-    void get().updateRecents(info.root);
-    // restore the last compiled PDF when it exists
-    try {
-      const pdf = await ipc.getBuiltPdfPath(
-        info.root,
-        info.settings.mainFile,
-        info.settings.outputDir
-      );
-      if (pdf) set((s) => ({ build: { ...s.build, lastGoodPdfPath: pdf } }));
+      const latex = await api.detectLatex();
+      set({ latex });
     } catch {
-      /* il PDF precedente non è disponibile: non è un errore */
+      set({ latex: null });
     }
   },
 
-  // NOTE: `updateRecents` is declared in the AppStore interface above and
-  // implemented as a regular action.
-  updateRecents: async (root: string) => {
-    const g = get().globalSettings;
-    const recents = [root, ...g.recentProjects.filter((p) => p !== root)].slice(0, 10);
-    const next = { ...g, recentProjects: recents };
-    set({ globalSettings: next });
+  build: async () => {
+    const { rootPath, settings, buildRunning } = get();
+    if (!rootPath || buildRunning) return;
+    set({ buildLog: [], buildRunning: true, lastBuildSuccess: null, outputOpen: true });
     try {
-      await ipc.saveGlobalSettings(next);
+      await api.startBuild(rootPath, settings.mainFile, settings.engine, settings.shellEscape);
     } catch (e) {
-      console.warn("Impossibile salvare i progetti recenti:", e);
-    }
-  },
-
-  closeProject: () => {
-    cancelAll();
-    set({
-      projectRoot: null,
-      projectName: "",
-      tree: [],
-      expandedDirs: {},
-      tabs: [],
-      activeTabPath: null,
-      build: initialBuild(),
-      externalChanges: [],
-    });
-  },
-
-  refreshTree: async () => {
-    const root = get().projectRoot;
-    if (!root) return;
-    try {
-      const tree = await ipc.readTree(root);
-      set({ tree });
-    } catch (e) {
-      get().setStatusMessage(`Impossibile aggiornare l'albero file: ${String(e)}`);
-    }
-  },
-
-  toggleDir: (path) => {
-    set((s) => ({ expandedDirs: { ...s.expandedDirs, [path]: !s.expandedDirs[path] } }));
-  },
-
-  collapseAllDirs: () => set({ expandedDirs: {} }),
-
-  // ----------------------------------------------------------- tabs/files --
-
-  openFile: async (path, line) => {
-    const root = get().projectRoot;
-    if (!root) return;
-    const existing = get().tabs.find((t) => t.path === path);
-    if (existing) {
-      set({ activeTabPath: path });
-    } else {
-      try {
-        const content = await ipc.readFile(root, path);
-        const stat = await ipc.statFile(root, path).catch(() => null);
-        const tab: Tab = {
-          path,
-          name: basename(path),
-          content,
-          savedContent: content,
-          openedMtime: stat ? stat.mtimeMs : 0,
-          reloadToken: 0,
-        };
-        set((s) => ({ tabs: [...s.tabs, tab], activeTabPath: path }));
-      } catch (e) {
-        get().setStatusMessage(`Impossibile aprire il file: ${String(e)}`);
-      }
-    }
-    if (typeof line === "number") {
-      await get().openFileAtLine(path, line);
-    }
-  },
-
-  closeTab: (path) => {
-    cancelAutosave(path);
-    set((s) => {
-      const idx = s.tabs.findIndex((t) => t.path === path);
-      const tabs = s.tabs.filter((t) => t.path !== path);
-      let active = s.activeTabPath;
-      if (active === path) {
-        active = tabs.length > 0 ? tabs[Math.min(idx, tabs.length - 1)].path : null;
-      }
-      return { tabs, activeTabPath: active };
-    });
-  },
-
-  activateTab: (path) => set({ activeTabPath: path }),
-
-  setTabContent: (path, content) => {
-    set((s) => ({
-      tabs: s.tabs.map((t) => (t.path === path ? { ...t, content } : t)),
-    }));
-    const g = get().globalSettings;
-    scheduleAutosave(
-      path,
-      () => void get().saveTab(path),
-      g.autosaveEnabled,
-      g.autosaveDelayMs
-    );
-  },
-
-  saveTab: async (pathArg) => {
-    const root = get().projectRoot;
-    const path = pathArg ?? get().activeTabPath;
-    if (!root || !path) return;
-    const tab = get().tabs.find((t) => t.path === path);
-    if (!tab) return;
-    cancelAutosave(path);
-    try {
-      const stat = await ipc.writeFile(root, path, tab.content);
-      set((s) => ({
-        tabs: s.tabs.map((t) =>
-          t.path === path ? { ...t, savedContent: t.content, openedMtime: stat.mtimeMs } : t
-        ),
-        lastSavedAt: Date.now(),
-      }));
-    } catch (e) {
-      get().setStatusMessage(`Salvataggio non riuscito: ${String(e)}`);
-    }
-  },
-
-  saveActiveTab: async () => {
-    await get().saveTab();
-  },
-
-  setCursor: (line, col) => set({ cursor: { line, col } }),
-
-  consumeReveal: () => {
-    const reveal = get().pendingReveal;
-    if (reveal) set({ pendingReveal: null });
-    return reveal;
-  },
-
-  openFileAtLine: async (path, line) => {
-    await get().openFile(path);
-    revealToken += 1;
-    set({ pendingReveal: { path, line, token: revealToken } });
-  },
-
-  jumpToLabel: async (label) => {
-    const pattern = new RegExp(`\\\\label\\{${escapeRegExp(label)}\\}`);
-    for (const t of get().tabs) {
-      const m = pattern.exec(t.content);
-      if (m) {
-        const line = t.content.slice(0, m.index).split("\n").length;
-        await get().openFileAtLine(t.path, line);
-        return;
-      }
-    }
-    const root = get().projectRoot;
-    if (root) {
-      const files = flattenFiles(get().tree).filter((f) =>
-        /\.(tex|sty|cls)$/i.test(f.name)
-      );
-      for (const f of files.slice(0, 300)) {
-        try {
-          const content = await ipc.readFile(root, f.path);
-          const m = pattern.exec(content);
-          if (m) {
-            const line = content.slice(0, m.index).split("\n").length;
-            await get().openFileAtLine(f.path, line);
-            return;
-          }
-        } catch {
-          /* file non leggibile: ignora */
-        }
-      }
-    }
-    get().setStatusMessage(`Etichetta '${label}' non trovata.`);
-  },
-
-  // ---------------------------------------------------------- fs operations --
-
-  createEntry: async (path, isDir) => {
-    const root = get().projectRoot;
-    if (!root) return;
-    try {
-      await ipc.createEntry(root, path, isDir);
-      await get().refreshTree();
-    } catch (e) {
-      get().setStatusMessage(String(e));
-    }
-  },
-
-  renameEntry: async (oldPath, newPath) => {
-    const root = get().projectRoot;
-    if (!root) return;
-    try {
-      await ipc.renameEntry(root, oldPath, newPath);
-      set((s) => ({
-        tabs: s.tabs.map((t) =>
-          t.path === oldPath ? { ...t, path: newPath, name: basename(newPath) } : t
-        ),
-        activeTabPath: s.activeTabPath === oldPath ? newPath : s.activeTabPath,
-      }));
-      await get().refreshTree();
-    } catch (e) {
-      get().setStatusMessage(String(e));
-    }
-  },
-
-  deleteEntry: async (path) => {
-    const root = get().projectRoot;
-    if (!root) return;
-    try {
-      await ipc.deleteEntry(root, path);
-      cancelAutosave(path);
-      set((s) => {
-        const tabs = s.tabs.filter((t) => t.path !== path);
-        const active =
-          s.activeTabPath === path
-            ? tabs.length > 0
-              ? tabs[tabs.length - 1].path
-              : null
-            : s.activeTabPath;
-        return { tabs, activeTabPath: active };
+      set({ buildRunning: false });
+      get().appendLog({
+        tsMs: Date.now(),
+        kind: "error",
+        file: null,
+        line: null,
+        text: `avvio compilazione fallito: ${String(e)}`,
       });
-      await get().refreshTree();
-    } catch (e) {
-      get().setStatusMessage(String(e));
-    }
-  },
-
-  // ---------------------------------------------------------------- build --
-
-  startBuild: async () => {
-    const root = get().projectRoot;
-    if (!root || get().build.status === "running") return;
-    const ps = get().projectSettings;
-    set((s) => ({
-      build: {
-        ...initialBuild(),
-        status: "running",
-        engine: ps.engine,
-        startedAt: Date.now(),
-        lastGoodPdfPath: s.build.lastGoodPdfPath,
-      },
-    }));
-    try {
-      const id = await ipc.startBuild({
-        projectRoot: root,
-        mainFile: ps.mainFile,
-        engine: ps.engine,
-        outputDir: ps.outputDir,
-        useLatexmk: ps.useLatexmk,
-        shellEscape: ps.shellEscape,
-      });
-      set((s) => ({ build: { ...s.build, buildId: id } }));
-    } catch (e) {
-      set((s) => ({
-        build: { ...s.build, status: "error", message: String(e), finishedAt: Date.now() },
-      }));
     }
   },
 
   cancelBuild: async () => {
-    const id = get().build.buildId;
-    if (id == null) return;
     try {
-      await ipc.cancelBuild(id);
+      await api.cancelBuild();
     } catch {
-      /* la compilazione potrebbe essere già terminata */
+      /* ignore */
     }
   },
 
-  appendBuildLine: (line) => {
-    pendingLines.push(line.text);
-    if (flushTimer === null) {
-      flushTimer = setTimeout(() => {
-        flushTimer = null;
-        const lines = pendingLines;
-        pendingLines = [];
-        set((s) => {
-          const output = [...s.build.output, ...lines];
-          if (output.length > 4000) output.splice(0, output.length - 4000);
-          return { build: { ...s.build, output } };
-        });
-      }, 100);
-    }
+  appendLog: (line) => {
+    set((s) => ({
+      buildLog: [...s.buildLog, line].slice(-3000),
+    }));
   },
 
-  finishBuild: (ev) => {
-    // flush pending output lines first
-    if (flushTimer !== null) {
-      clearTimeout(flushTimer);
-      flushTimer = null;
-    }
-    const lines = pendingLines;
-    pendingLines = [];
-    set((s) => {
-      const output = [...s.build.output, ...lines];
-      if (output.length > 4000) output.splice(0, output.length - 4000);
-      const lastGood =
-        ev.status === "success" && ev.pdfPath ? ev.pdfPath : s.build.lastGoodPdfPath;
-      return {
-        build: {
-          ...s.build,
-          status: ev.status,
-          issues: ev.issues,
-          pdfPath: ev.pdfPath,
-          lastGoodPdfPath: lastGood,
-          output,
-          durationMs: ev.durationMs,
-          message: ev.message,
-          finishedAt: Date.now(),
-        },
-      };
-    });
+  clearLog: () => set({ buildLog: [] }),
+
+  setBuildFinished: (payload) => {
+    set((s) => ({
+      buildRunning: false,
+      lastBuildSuccess: payload.success,
+      lastBuildDurationMs: payload.durationMs,
+      pdfVersion: payload.success ? s.pdfVersion + 1 : s.pdfVersion,
+    }));
   },
 
-  clearBuildOutput: () => {
-    pendingLines = [];
-    if (flushTimer !== null) {
-      clearTimeout(flushTimer);
-      flushTimer = null;
-    }
-    set((s) => ({ build: { ...s.build, output: [], issues: [] } }));
-  },
-
-  pdfReloadToken: 0,
-
-  reloadPdf: () => set((s) => ({ pdfReloadToken: s.pdfReloadToken + 1 })),
-
-  // ------------------------------------------------------------- settings --
-
-  updateGlobalSettings: async (patch) => {
-    const next = { ...get().globalSettings, ...patch };
-    set({ globalSettings: next });
-    try {
-      await ipc.saveGlobalSettings(next);
-    } catch (e) {
-      get().setStatusMessage(`Impossibile salvare le impostazioni: ${String(e)}`);
-    }
-  },
-
-  updateProjectSettings: async (patch) => {
-    const next = { ...get().projectSettings, ...patch };
-    set({ projectSettings: next });
-    const root = get().projectRoot;
-    if (root) {
-      try {
-        await ipc.saveProjectSettings(root, next);
-      } catch (e) {
-        get().setStatusMessage(`Impostazioni progetto non salvate: ${String(e)}`);
-      }
-    }
-  },
-
-  // ------------------------------------------------------ external changes --
-
-  checkExternalChanges: async () => {
-    const root = get().projectRoot;
-    if (!root || get().build.status === "running") return;
-    const changed: ExternalChange[] = [];
-    for (const t of get().tabs) {
-      try {
-        const stat = await ipc.statFile(root, t.path);
-        if (stat.mtimeMs > t.openedMtime + 500) {
-          changed.push({ path: t.path, name: t.name });
-        }
-      } catch {
-        changed.push({ path: t.path, name: t.name }); // file deleted externally
-      }
-    }
-    if (changed.length > 0) set({ externalChanges: changed });
-  },
-
-  reloadExternalFiles: async (paths) => {
-    const root = get().projectRoot;
-    if (!root) return;
-    for (const path of paths) {
-      try {
-        const content = await ipc.readFile(root, path);
-        const stat = await ipc.statFile(root, path).catch(() => null);
-        set((s) => ({
-          tabs: s.tabs.map((t) =>
-            t.path === path
-              ? {
-                  ...t,
-                  content,
-                  savedContent: content,
-                  openedMtime: stat ? stat.mtimeMs : 0,
-                  reloadToken: t.reloadToken + 1,
-                }
-              : t
-          ),
-        }));
-      } catch {
-        get().closeTab(path);
-      }
-    }
-    set({ externalChanges: [] });
-  },
-
-  dismissExternalChanges: () => {
-    // keep the current buffers, just update the baseline mtime so we do not
-    // ask again immediately
-    const root = get().projectRoot;
-    set({ externalChanges: [] });
-    if (root) {
-      for (const t of get().tabs) {
-        void ipc
-          .statFile(root, t.path)
-          .then((stat) =>
-            set((s) => ({
-              tabs: s.tabs.map((x) =>
-                x.path === t.path ? { ...x, openedMtime: stat.mtimeMs } : x
-              ),
-            }))
-          )
-          .catch(() => undefined);
-      }
-    }
-  },
-
-  // -------------------------------------------------------------------- ui --
-
-  setUi: (patch) => set((s) => ({ ui: { ...s.ui, ...patch } })),
-
-  setTemplates: (list) => set({ templates: list }),
-
-  setStatusMessage: (msg) => {
-    if (statusTimer !== null) clearTimeout(statusTimer);
-    set({ statusMessage: msg });
-    if (msg !== null) {
-      statusTimer = setTimeout(() => set({ statusMessage: null }), 5000);
-    }
-  },
-
-  toggleTheme: async () => {
-    const next: ThemeName = get().globalSettings.theme === "dark" ? "light" : "dark";
-    await get().updateGlobalSettings({ theme: next });
-  },
+  toggleOutput: () => set((s) => ({ outputOpen: !s.outputOpen })),
+  togglePdf: () => set((s) => ({ pdfOpen: !s.pdfOpen })),
+  toggleSidebar: () => set((s) => ({ sidebarOpen: !s.sidebarOpen })),
+  setSettingsOpen: (open) => set({ settingsOpen: open }),
+  setWelcomeAction: (a) => set({ welcomeAction: a }),
+  setSelectedTemplateId: (id) => set({ selectedTemplateId: id }),
 }));

@@ -1,64 +1,33 @@
-% Modello "Presentazione" (Beamer) — LaTeX Editor Offline
-% Contenuto segnaposto originale: libero da usare e modificare.
-\documentclass[11pt,aspectratio=169]{beamer}
+\documentclass{beamer}
+\usetheme{Madrid}
+\usepackage[utf8]{inputenc}
 
-\usepackage[italian]{babel}
-\usepackage{amsmath}
-
-\title{Presentazione di esempio}
-\subtitle{Sottotitolo facoltativo}
-\author{Nome Autore}
-\institute{Istituto di esempio}
+\title{Titolo della presentazione}
+\subtitle{Creata con LaTeX Editor Offline}
+\author{Nome Cognome}
 \date{\today}
 
 \begin{document}
 
-\begin{frame}
-  \titlepage
-\end{frame}
+\frame{\titlepage}
 
-\begin{frame}{Contenuti}
+\begin{frame}{Indice}
   \tableofcontents
 \end{frame}
 
 \section{Introduzione}
-
 \begin{frame}{Introduzione}
   \begin{itemize}
-    \item primo punto della presentazione;
-    \item secondo punto della presentazione;
-    \item terzo punto con una formula: $e^{i\pi} + 1 = 0$.
+    \item Primo punto
+    \item Secondo punto
+    \item Terzo punto
   \end{itemize}
 \end{frame}
 
-\section{Sviluppo}
-
-\begin{frame}{Due colonne}
-  \begin{columns}[T]
-    \begin{column}{0.48\textwidth}
-      Testo a sinistra: descrivi un'idea.
-    \end{column}
-    \begin{column}{0.48\textwidth}
-      Testo a destra: descrivi l'altra idea.
-    \end{column}
-  \end{columns}
-\end{frame}
-
-\begin{frame}{Un blocco}
-  \begin{block}{Da ricordare}
-    I blocchi evidenziano i messaggi chiave della diapositiva.
-  \end{block}
-\end{frame}
-
-\section{Conclusioni}
-
-\begin{frame}{Conclusioni}
-  \begin{itemize}
-    \item risultato principale;
-    \item sviluppi futuri.
-  \end{itemize}
-  \vfill
-  \centering Grazie dell'attenzione.
+\begin{frame}{Una formula}
+  \begin{equation}
+    e^{i\pi} + 1 = 0
+  \end{equation}
 \end{frame}
 
 \end{document}

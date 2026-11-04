@@ -1,144 +1,78 @@
 import { useEffect } from "react";
+import { listen } from "@tauri-apps/api/event";
+import { useStore } from "./state/store";
+import { TopBar } from "./components/TopBar";
+import { StatusBar } from "./components/StatusBar";
+import { Welcome } from "./components/Welcome";
+import { SettingsDialog } from "./components/SettingsDialog";
+import { FileTree } from "./filetree/FileTree";
+import { EditorPane } from "./editor/EditorPane";
+import { OutputPanel } from "./build/OutputPanel";
+import { PdfPreview } from "./pdf/PdfPreview";
+import type { BuildFinishedPayload, LogLine } from "./types";
+import styles from "./styles/layout.module.css";
 
-import StatusBar from "./components/StatusBar";
-import Toolbar from "./components/Toolbar";
-import EditorTabs from "./editor/EditorTabs";
-import CodeEditor from "./editor/CodeEditor";
-import FileTree from "./filetree/FileTree";
-import NewProjectDialog from "./features/project/NewProjectDialog";
-import ProjectPicker from "./features/project/ProjectPicker";
-import OutputPanel from "./features/build/OutputPanel";
-import SettingsDialog from "./features/settings/SettingsDialog";
-import PdfViewer from "./pdf/PdfViewer";
-import { useAppStore } from "./state/store";
-import * as ipc from "./tauri/ipc";
-
-export default function App(): JSX.Element {
-  const theme = useAppStore((s) => s.globalSettings.theme);
-  const projectRoot = useAppStore((s) => s.projectRoot);
-  const settingsOpen = useAppStore((s) => s.ui.settingsOpen);
-  const newProjectOpen = useAppStore((s) => s.ui.newProjectOpen);
-  const bootstrap = useAppStore((s) => s.bootstrap);
+export default function App() {
+  const rootPath = useStore((s) => s.rootPath);
+  const outputOpen = useStore((s) => s.outputOpen);
+  const pdfOpen = useStore((s) => s.pdfOpen);
 
   useEffect(() => {
-    void bootstrap();
+    useStore.getState().bootstrap();
+  }, []);
 
-    const unOutput = ipc.onBuildLine((ev) => useAppStore.getState().appendBuildLine(ev));
-    const unFinished = ipc.onBuildFinished((ev) => useAppStore.getState().finishBuild(ev));
+  useEffect(() => {
+    const unsubs: Array<() => void> = [];
+    let disposed = false;
+    const registrations = [
+      listen<LogLine>("build-output", (e) => useStore.getState().appendLog(e.payload)),
+      listen<BuildFinishedPayload>("build-finished", (e) =>
+        useStore.getState().setBuildFinished(e.payload),
+      ),
+    ];
+    for (const p of registrations) {
+      p.then((f) => {
+        if (disposed) f();
+        else unsubs.push(f);
+      }).catch(() => undefined);
+    }
+    return () => {
+      disposed = true;
+      for (const f of unsubs) f();
+    };
+  }, []);
 
-    const onKeydown = (e: KeyboardEvent): void => {
-      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "s") {
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "F5") {
         e.preventDefault();
-        void useAppStore.getState().saveActiveTab();
+        useStore.getState().build();
       }
     };
-    window.addEventListener("keydown", onKeydown);
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
 
-    const onFocus = (): void => void useAppStore.getState().checkExternalChanges();
-    window.addEventListener("focus", onFocus);
-    const interval = setInterval(() => void useAppStore.getState().checkExternalChanges(), 30000);
-
-    return () => {
-      void unOutput.then((f) => f());
-      void unFinished.then((f) => f());
-      window.removeEventListener("keydown", onKeydown);
-      window.removeEventListener("focus", onFocus);
-      clearInterval(interval);
-    };
-  }, [bootstrap]);
+  if (!rootPath) {
+    return (
+      <>
+        <Welcome />
+        <SettingsDialog />
+      </>
+    );
+  }
 
   return (
-    <div className="app" data-theme={theme}>
-      <Toolbar />
-      {projectRoot ? <Workspace /> : <ProjectPicker />}
-      <StatusBar />
-      {settingsOpen && <SettingsDialog />}
-      {newProjectOpen && <NewProjectDialog />}
-      <ExternalChangesDialog />
-    </div>
-  );
-}
-
-function Workspace(): JSX.Element {
-  const ui = useAppStore((s) => s.ui);
-  const cols = [
-    ui.leftPanel ? "250px" : null,
-    "1fr",
-    ui.rightPanel ? "minmax(280px, 42%)" : null,
-  ]
-    .filter((c): c is string => c !== null)
-    .join(" ");
-  const rows = ["auto", "1fr", ui.bottomPanel ? "230px" : null]
-    .filter((r): r is string => r !== null)
-    .join(" ");
-
-  return (
-    <div className="workspace" style={{ gridTemplateColumns: cols }}>
-      {ui.leftPanel && (
-        <aside className="panel panel-left">
-          <FileTree />
-        </aside>
-      )}
-      <section className="center" style={{ gridTemplateRows: rows }}>
-        <EditorTabs />
-        <div className="editor-host">
-          <CodeEditor />
-        </div>
-        {ui.bottomPanel && (
-          <div className="panel panel-bottom">
-            <OutputPanel />
-          </div>
-        )}
-      </section>
-      {ui.rightPanel && (
-        <aside className="panel panel-right">
-          <PdfViewer />
-        </aside>
-      )}
-    </div>
-  );
-}
-
-function ExternalChangesDialog(): JSX.Element | null {
-  const externalChanges = useAppStore((s) => s.externalChanges);
-  const tabs = useAppStore((s) => s.tabs);
-  const reloadExternalFiles = useAppStore((s) => s.reloadExternalFiles);
-  const dismissExternalChanges = useAppStore((s) => s.dismissExternalChanges);
-
-  if (externalChanges.length === 0) return null;
-
-  const reload = (): void => {
-    void reloadExternalFiles(externalChanges.map((c) => c.path));
-  };
-
-  return (
-    <div className="modal-backdrop" role="presentation">
-      <div className="modal" role="dialog" aria-modal={true} aria-label="File modificati all'esterno">
-        <h3>File modificati all&apos;esterno</h3>
-        <p className="dialog-hint">
-          Questi file sono cambiati su disco mentre erano aperti nell&apos;editor:
-        </p>
-        <ul className="plain-list">
-          {externalChanges.map((c) => {
-            const tab = tabs.find((t) => t.path === c.path);
-            const dirty = tab ? tab.content !== tab.savedContent : false;
-            return (
-              <li key={c.path}>
-                <code>{c.name}</code>
-                {dirty ? <span className="warn-text"> (con modifiche non salvate)</span> : null}
-              </li>
-            );
-          })}
-        </ul>
-        <div className="dialog-actions">
-          <button className="btn btn-primary" onClick={reload}>
-            Ricarica dal disco
-          </button>
-          <button className="btn" onClick={dismissExternalChanges}>
-            Mantieni le mie modifiche
-          </button>
-        </div>
+    <div className={styles.app}>
+      <TopBar />
+      <div className={styles.mainRow}>
+        <FileTree />
+        <EditorPane />
+        {pdfOpen && <PdfPreview />}
       </div>
+      {outputOpen && <OutputPanel />}
+      <StatusBar />
+      <SettingsDialog />
     </div>
   );
 }

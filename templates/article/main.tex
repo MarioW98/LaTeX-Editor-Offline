@@ -1,77 +1,32 @@
-% Modello "Articolo" — LaTeX Editor Offline
-% Contenuto segnaposto originale: libero da usare e modificare.
 \documentclass[11pt,a4paper]{article}
-
 \usepackage[T1]{fontenc}
 \usepackage[utf8]{inputenc}
-\usepackage[italian]{babel}
-\usepackage{amsmath,amssymb}
+\usepackage{amsmath}
 \usepackage{graphicx}
-\usepackage{booktabs}
-\usepackage[hidelinks]{hyperref}
+\usepackage{hyperref}
 
 \title{Titolo dell'articolo}
-\author{Nome Autore}
+\author{Nome Cognome}
 \date{\today}
 
 \begin{document}
-
 \maketitle
 
 \begin{abstract}
-  Riassunto breve del documento: sostituisci questo testo segnaposto con
-  qualche riga che descriva obiettivi, metodo e risultati dell'articolo.
+Breve riassunto del contenuto dell'articolo.
 \end{abstract}
 
-\tableofcontents
-
 \section{Introduzione}
-Questa è la sezione introduttiva. Puoi citare un lavoro con il comando
-\cite{esempio2024} e riferirti a un'equazione con \eqref{eq:energia}.
+Testo introduttivo con una citazione \cite{knuth1986}.
 
-\section{Metodi}
-\subsection{Impostazione}
-Descrivi qui l'impostazione del problema. La notazione matematica è
-disponibile in linea, come $E = mc^2$, oppure in display:
-
+\section{Metodo}
+Un'equazione in linea $E = mc^2$ e una in blocco:
 \begin{equation}
-  \label{eq:energia}
-  E = mc^2
+  \int_{-\infty}^{\infty} e^{-x^2}\,dx = \sqrt{\pi}
 \end{equation}
 
-\subsection{Raccolta dati}
-Descrivi come sono stati raccolti i dati e con quali strumenti.
-
-\section{Risultati}
-Un elenco puntato di esempio:
-
-\begin{itemize}
-  \item primo risultato osservato;
-  \item secondo risultato osservato.
-\end{itemize}
-
-Una tabella di esempio con il pacchetto \texttt{booktabs}:
-
-\begin{table}[htbp]
-  \centering
-  \caption{Tabella di esempio.}
-  \label{tab:esempio}
-  \begin{tabular}{lrr}
-    \toprule
-    Voce  & Valore A & Valore B \\
-    \midrule
-    Uno   & 1,0      & 2,0      \\
-    Due   & 3,0      & 4,0      \\
-    \bottomrule
-  \end{tabular}
-\end{table}
-
-Per inserire una figura, salva un'immagine nella cartella del progetto e
-usa \texttt{\textbackslash includegraphics} dentro l'ambiente
-\texttt{figure}.
-
 \section{Conclusioni}
-Sostituisci con le tue conclusioni.
+Conclusioni dell'articolo.
 
 \bibliographystyle{plain}
 \bibliography{bibliography}

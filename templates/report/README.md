@@ -1,9 +1,3 @@
-# Modello «Relazione»
+# Report
 
-Relazione tecnica con copertina automatica, indice, capitoli, figura
-segnaposto, tabella e bibliografia.
-
-- File principale: `main.tex`
-- Motore consigliato: `pdflatex`
-
-Contenuto originale, libero da usare e modificare.
+Template di riferimento di LaTeX Editor Offline. I template sono incorporati nell'app (src/features/templates.ts); questa cartella li riporta per consultazione e CI.

@@ -1,0 +1,328 @@
+/* ---- file tree sidebar ---- */
+
+.sidebar {
+  width: 240px;
+  flex: 0 0 240px;
+  background: var(--panel);
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.sidebarToolbar {
+  display: flex;
+  gap: 4px;
+  padding: 6px;
+  border-bottom: 1px solid var(--border);
+}
+
+.sidebarToolbar button {
+  padding: 2px 8px;
+  font-size: 12px;
+}
+
+.treeScroll {
+  overflow: auto;
+  flex: 1;
+}
+
+.treeRow {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 8px;
+  cursor: pointer;
+  white-space: nowrap;
+  user-select: none;
+}
+
+.treeRow:hover {
+  background: var(--panel2);
+}
+
+.treeRowActive {
+  background: #2b3040;
+}
+
+.treeIcon {
+  width: 14px;
+  color: var(--muted);
+  flex: 0 0 auto;
+}
+
+.treeName {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.treeActions {
+  margin-left: auto;
+  display: none;
+  gap: 4px;
+}
+
+.treeRow:hover .treeActions {
+  display: inline-flex;
+}
+
+.treeActions button {
+  padding: 0 5px;
+  font-size: 10.5px;
+  border-radius: 4px;
+}
+
+.treeDeleteArmed {
+  color: var(--red);
+  border-color: var(--red);
+}
+
+.treeInput {
+  width: calc(100% - 16px);
+  margin: 4px 8px;
+  padding: 3px 6px;
+  font-size: 12.5px;
+}
+
+.treeEmpty {
+  color: var(--muted);
+  padding: 10px;
+}
+
+/* ---- editor pane ---- */
+
+.editorPane {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  background: #1b1d23;
+}
+
+.tabBar {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  height: 34px;
+  padding: 0 6px;
+  background: var(--panel);
+  border-bottom: 1px solid var(--border);
+  overflow-x: auto;
+  flex: 0 0 auto;
+}
+
+.tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 8px;
+  height: 28px;
+  border-radius: 6px;
+  cursor: pointer;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.tab:hover {
+  background: var(--panel2);
+}
+
+.tabActive {
+  background: #2b3040;
+  color: var(--text);
+}
+
+.tabName {
+  font-size: 12.5px;
+}
+
+.dirtyDot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--yellow);
+}
+
+.tabClose {
+  border: none;
+  background: transparent;
+  padding: 0 3px;
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.tabClose:hover {
+  color: var(--red);
+}
+
+.tabEmpty {
+  color: var(--muted);
+  font-size: 12.5px;
+}
+
+.editorHost {
+  flex: 1;
+  min-height: 0;
+  position: relative;
+}
+
+.cmHost {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+}
+
+.cmHost > .cm-editor {
+  height: 100%;
+}
+
+.editorPlaceholder {
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--muted);
+}
+
+.binaryNotice {
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--yellow);
+}
+
+/* ---- output panel ---- */
+
+.outputPanel {
+  height: 200px;
+  flex: 0 0 200px;
+  border-top: 1px solid var(--border);
+  background: var(--panel);
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.outputHeader {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--border);
+  flex: 0 0 auto;
+}
+
+.outputStats {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.outputActions {
+  margin-left: auto;
+  display: flex;
+  gap: 6px;
+}
+
+.outputScroll {
+  flex: 1;
+  overflow: auto;
+  font-family: var(--mono);
+  font-size: 12px;
+  line-height: 1.5;
+  padding: 6px 0;
+}
+
+.outputPlaceholder {
+  color: var(--muted);
+  padding: 0 12px;
+  font-family: system-ui, sans-serif;
+}
+
+.logLine {
+  padding: 0 12px;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+.logLine[title] {
+  cursor: pointer;
+}
+
+.logError {
+  color: var(--red);
+}
+
+.logWarning {
+  color: var(--yellow);
+}
+
+.logStderr {
+  color: #c98f8f;
+}
+
+/* ---- pdf preview ---- */
+
+.pdfPane {
+  width: 46%;
+  min-width: 320px;
+  max-width: 640px;
+  flex: 0 0 46%;
+  border-left: 1px solid var(--border);
+  background: var(--panel);
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.pdfToolbar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--border);
+  flex: 0 0 auto;
+}
+
+.pdfToolbar button {
+  padding: 2px 8px;
+}
+
+.pdfSpacer {
+  flex: 1;
+}
+
+.pdfZoom {
+  font-size: 12px;
+  color: var(--muted);
+  min-width: 40px;
+  text-align: center;
+}
+
+.pdfScroll {
+  flex: 1;
+  overflow: auto;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  background: #14151a;
+}
+
+.pdfMeta {
+  color: var(--muted);
+  font-size: 12px;
+  margin: 0;
+}
+
+.pdfNotice {
+  color: var(--muted);
+  padding: 12px;
+}
+
+.pdfPage {
+  background: #ffffff;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.5);
+  max-width: 100%;
+}

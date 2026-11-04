@@ -1,11 +1,3 @@
-# Modello «Tesi»
+# Thesis
 
-Tesi di laurea con frontespizio personalizzato, ringraziamenti, indice,
-capitoli tipici (introduzione, stato dell'arte, metodologia,
-sperimentazione, conclusioni) e bibliografia.
-
-- File principale: `main.tex`
-- Motore consigliato: `pdflatex`
-- Interlinea 1,5 (`setspace`)
-
-Contenuto originale, libero da usare e modificare.
+Template di riferimento di LaTeX Editor Offline. I template sono incorporati nell'app (src/features/templates.ts); questa cartella li riporta per consultazione e CI.

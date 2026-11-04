@@ -1,9 +1,3 @@
-# Modello «Libro»
+# Book
 
-Libro con frontespizio, indice, numerazione romana in apertura, capitoli,
-appendice e bibliografia.
-
-- File principale: `main.tex`
-- Motore consigliato: `pdflatex`
-
-Contenuto originale, libero da usare e modificare.
+Template di riferimento di LaTeX Editor Offline. I template sono incorporati nell'app (src/features/templates.ts); questa cartella li riporta per consultazione e CI.

@@ -1,44 +1,32 @@
-% Progetto demo — LaTeX Editor Offline
-% Contenuto segnaposto originale: libero da usare e modificare.
 \documentclass[11pt,a4paper]{article}
-
 \usepackage[T1]{fontenc}
 \usepackage[utf8]{inputenc}
-\usepackage[italian]{babel}
 \usepackage{amsmath}
-\usepackage[hidelinks]{hyperref}
+\usepackage{graphicx}
+\usepackage{hyperref}
 
-\title{Progetto dimostrativo}
-\author{LaTeX Editor Offline}
+\title{Titolo dell'articolo}
+\author{Nome Cognome}
 \date{\today}
 
 \begin{document}
-
 \maketitle
 
-\section{Benvenuto}
-Questo progetto dimostrativo serve a provare subito l'editor: apri la
-cartella, premi «Compila» e guarda il PDF comparire a destra.
+\begin{abstract}
+Breve riassunto del contenuto dell'articolo.
+\end{abstract}
 
-\section{Alcune funzionalità}
-\begin{itemize}
-  \item evidenziazione della sintassi e completamento dei comandi;
-  \item compilazione con \texttt{latexmk} o pipeline a passate;
-  \item elenco dei problemi cliccabile.
-\end{itemize}
+\section{Introduzione}
+Testo introduttivo con una citazione \cite{knuth1986}.
 
+\section{Metodo}
+Un'equazione in linea $E = mc^2$ e una in blocco:
 \begin{equation}
-  \label{eq:demo}
-  \int_0^1 x^2 \, dx = \frac{1}{3}
+  \int_{-\infty}^{\infty} e^{-x^2}\,dx = \sqrt{\pi}
 \end{equation}
 
-Prova a cliccare sul riferimento \eqref{eq:demo}: l'editor salta alla
-riga dell'etichetta. Poi introduci un errore (per esempio scrivi
-\verb|\comandonondefinito|) e ricompila: il problema apparirà nell'elenco
-in basso.
-
-\section{Bibliografia}
-Una citazione di esempio: \cite{esempio2024}.
+\section{Conclusioni}
+Conclusioni dell'articolo.
 
 \bibliographystyle{plain}
 \bibliography{bibliography}

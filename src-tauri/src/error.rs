@@ -1,45 +1,45 @@
-//! Application error type.
-//!
-//! Tauri commands return `AppResult<T>`; the error is serialized as a plain
-//! string so the frontend always receives a readable message in Italian.
+use serde::{ser::Serializer, Serialize};
 
-use serde::Serialize;
+/// Serializable error type for Tauri commands (a plain string payload).
+#[derive(Debug)]
+pub struct AppError(pub String);
 
-#[derive(Debug, thiserror::Error)]
-pub enum AppError {
-    #[error("Errore di I/O: {0}")]
-    Io(#[from] std::io::Error),
-
-    #[error("Il percorso è fuori dalla cartella del progetto: {0}")]
-    OutsideProject(String),
-
-    #[error("Percorso non valido: {0}")]
-    InvalidPath(String),
-
-    #[error("Non trovato: {0}")]
-    NotFound(String),
-
-    #[error("JSON non valido: {0}")]
-    Json(#[from] serde_json::Error),
-
-    #[error("{0}")]
-    Message(String),
+impl std::fmt::Display for AppError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0)
+    }
 }
 
+impl std::error::Error for AppError {}
+
 impl Serialize for AppError {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: serde::Serializer,
-    {
-        serializer.serialize_str(&self.to_string())
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.serialize_str(&self.0)
     }
 }
 
 pub type AppResult<T> = Result<T, AppError>;
 
-impl AppError {
-    /// Convenience constructor for plain user-facing messages.
-    pub fn msg(text: impl Into<String>) -> Self {
-        AppError::Message(text.into())
+impl From<std::io::Error> for AppError {
+    fn from(e: std::io::Error) -> Self {
+        AppError(e.to_string())
+    }
+}
+
+impl From<std::env::JoinPathsError> for AppError {
+    fn from(e: std::env::JoinPathsError) -> Self {
+        AppError(e.to_string())
+    }
+}
+
+impl From<serde_json::Error> for AppError {
+    fn from(e: serde_json::Error) -> Self {
+        AppError(e.to_string())
+    }
+}
+
+impl From<tauri::Error> for AppError {
+    fn from(e: tauri::Error) -> Self {
+        AppError(e.to_string())
     }
 }

@@ -1,10 +1,3 @@
-# Modello «Presentazione»
+# Beamer
 
-Presentazione Beamer 16:9 con title page, indice, elenchi, colonne e
-blocchi.
-
-- File principale: `main.tex`
-- Motore consigliato: `pdflatex`
-- Richiede il pacchetto `beamer` (incluso nelle distribuzioni complete)
-
-Contenuto originale, libero da usare e modificare.
+Template di riferimento di LaTeX Editor Offline. I template sono incorporati nell'app (src/features/templates.ts); questa cartella li riporta per consultazione e CI.

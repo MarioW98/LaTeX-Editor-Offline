@@ -1,53 +1,43 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "LaTeX Editor Offline",
+  "mainBinaryName": "latex-editor-offline",
   "version": "0.1.0",
-  "identifier": "io.latexeditor.offline",
+  "identifier": "com.latexeditor.offline",
   "build": {
     "beforeDevCommand": "npm run dev",
-    "devUrl": "http://localhost:5173",
     "beforeBuildCommand": "npm run build",
+    "devUrl": "http://localhost:5173",
     "frontendDist": "../dist"
   },
   "app": {
     "windows": [
       {
+        "label": "main",
         "title": "LaTeX Editor Offline",
-        "width": 1440,
-        "height": 900,
-        "minWidth": 960,
-        "minHeight": 600,
-        "resizable": true,
-        "center": true
+        "width": 1360,
+        "height": 860,
+        "minWidth": 980,
+        "minHeight": 620
       }
     ],
     "security": {
-      "csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self' data:; img-src 'self' data: blob:; worker-src 'self' blob:; connect-src ipc: http://ipc.localhost"
+      "csp": null
     }
   },
   "bundle": {
     "active": true,
     "targets": "all",
-    "category": "Productivity",
-    "shortDescription": "Editor LaTeX completamente offline",
-    "longDescription": "Un editor LaTeX originale e completamente offline: modifica con CodeMirror 6, compilazione locale (latexmk o pipeline a passate) e anteprima PDF integrata.",
+    "category": "DeveloperTool",
+    "shortDescription": "Offline-first LaTeX editor",
+    "longDescription": "A fully offline LaTeX desktop editor: project files stay on your disk, compilation runs locally, no account and no network access.",
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
       "icons/128x128@2x.png",
+      "icons/512x512.png",
       "icons/icon.icns",
       "icons/icon.ico"
-    ],
-    "windows": {
-      "webviewInstallMode": {
-        "type": "offlineInstaller"
-      },
-      "nsis": {
-        "installMode": "currentUser"
-      }
-    },
-    "macOS": {
-      "minimumSystemVersion": "10.15"
-    }
+    ]
   }
 }

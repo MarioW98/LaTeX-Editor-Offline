@@ -1,21 +1,20 @@
-//! Managed Tauri state.
+use std::process::Child;
+use std::sync::{Arc, Mutex};
 
-use crate::build_engine::BuildEngine;
+use crate::commands::latex::LogLine;
 
+/// Mutable state shared between commands and the build monitor thread.
+#[derive(Default)]
 pub struct AppState {
-    pub build: BuildEngine,
+    /// The currently running build job, if any. Taken by `cancel_build`.
+    pub build: Mutex<Option<BuildJob>>,
+    /// Log of the most recent build (kept after the job ends).
+    pub last_log: Mutex<Vec<LogLine>>,
+    /// Outcome of the most recent build.
+    pub last_success: Mutex<Option<bool>>,
 }
 
-impl AppState {
-    pub fn new() -> Self {
-        Self {
-            build: BuildEngine::new(),
-        }
-    }
-}
-
-impl Default for AppState {
-    fn default() -> Self {
-        Self::new()
-    }
+pub struct BuildJob {
+    pub child: Child,
+    pub lines: Arc<Mutex<Vec<LogLine>>>,
 }

@@ -1,114 +1,245 @@
-//! Comandi di gestione progetto: apertura, creazione da template,
-//! albero file, raccolta etichette.
-
-use std::path::PathBuf;
-
 use serde::Serialize;
-use tauri::State;
+use std::io::Write as _;
+use std::path::{Component, Path, PathBuf};
 
-use crate::commands::settings::{read_meta, write_meta, ProjectMeta};
-use crate::error::AppError;
-use crate::fs::{labels, sandbox, tree, tree::FileNode};
-use crate::state::AppState;
-use crate::templates;
+use crate::error::{AppError, AppResult};
 
-#[derive(Serialize, Clone, Debug)]
+#[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct ProjectSnapshot {
-    /// Radice assoluta (normalizzata) della cartella progetto.
-    pub root: String,
-    pub meta: ProjectMeta,
-    pub tree: FileNode,
+pub struct FileNode {
+    pub name: String,
+    /// Path relative to the project root, using forward slashes.
+    pub path: String,
+    pub kind: String, // "file" | "dir"
+    pub children: Option<Vec<FileNode>>,
 }
 
-fn snapshot_of(root: &std::path::Path, meta: ProjectMeta) -> Result<ProjectSnapshot, AppError> {
-    let root_name = root
-        .file_name()
-        .map(|n| n.to_string_lossy().to_string())
-        .unwrap_or_else(|| "progetto".into());
-    let t = tree::build_tree(root, &meta.output_dir, &root_name)?;
-    Ok(ProjectSnapshot {
-        root: root.display().to_string(),
-        meta,
-        tree: t,
-    })
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FileContent {
+    pub content: String,
+    pub size: u64,
+    pub binary: bool,
 }
 
-#[tauri::command]
-pub fn open_project(path: String, state: State<'_, AppState>) -> Result<ProjectSnapshot, AppError> {
-    let raw = PathBuf::from(&path);
-    if !raw.is_dir() {
-        return Err(AppError::NotFound(format!("cartella non trovata: {path}")));
-    }
-    let root = sandbox::normalize(&raw.canonicalize()?);
-    state.set_root(Some(root.clone()));
-    // Persiste i default se il progetto non ha ancora project.json.
-    let meta = read_meta(&root, true)?;
-    snapshot_of(&root, meta)
+const SKIP_DIRS: [&str; 5] = [".git", "node_modules", "target", ".latex-editor", "dist"];
+
+fn is_skipped_dir(name: &str) -> bool {
+    SKIP_DIRS.contains(&name)
 }
 
-#[tauri::command]
-pub fn create_project(
-    parent_dir: String,
-    name: String,
-    template: String,
-    state: State<'_, AppState>,
-) -> Result<ProjectSnapshot, AppError> {
-    let parent = PathBuf::from(&parent_dir);
-    if !parent.is_dir() {
-        return Err(AppError::NotFound(format!("cartella non trovata: {parent_dir}")));
-    }
-    let clean = sanitize_name(&name)?;
-    let root = parent.join(&clean);
-    if root.exists() {
-        return Err(AppError::Exists(root.display().to_string()));
-    }
-    let tpl = templates::get(&template)
-        .ok_or_else(|| AppError::Invalid(format!("template sconosciuto: {template}")))?;
-    std::fs::create_dir_all(&root)?;
-    for (rel, content) in tpl.files {
-        // I separatori `/` funzionano anche su Windows per i percorsi relativi.
-        let target = root.join(rel);
-        if let Some(dir) = target.parent() {
-            std::fs::create_dir_all(dir)?;
+/// Join `rel` onto `root`, rejecting anything that would escape the project
+/// folder (absolute paths, `..` components, Windows prefixes).
+pub fn resolve_in_root(root: &Path, rel: &str) -> AppResult<PathBuf> {
+    let rel_path = Path::new(rel);
+    let mut normalized = PathBuf::new();
+    for comp in rel_path.components() {
+        match comp {
+            Component::Normal(c) => normalized.push(c),
+            Component::CurDir => {}
+            _ => {
+                return Err(AppError(format!(
+                    "percorso non valido (fuori dal progetto?): {rel}"
+                )))
+            }
         }
-        std::fs::write(&target, content)?;
     }
-    // project.json viene rigenerato con nome e timestamp reali.
-    let meta = write_meta(&root, ProjectMeta { name: clean, ..ProjectMeta::default() })?;
-    let root_c = sandbox::normalize(&root.canonicalize()?);
-    state.set_root(Some(root_c.clone()));
-    snapshot_of(&root_c, meta)
+    Ok(root.join(normalized))
 }
 
-fn sanitize_name(name: &str) -> Result<String, AppError> {
-    let trimmed = name.trim();
-    if trimmed.is_empty() {
-        return Err(AppError::Invalid("il nome del progetto è vuoto".into()));
+fn valid_name(name: &str) -> bool {
+    !name.is_empty()
+        && name != "."
+        && name != ".."
+        && !name.contains('/')
+        && !name.contains('\\')
+        && !name.contains(':')
+        && !name.contains('*')
+        && !name.contains('?')
+        && !name.contains('<')
+        && !name.contains('>')
+        && !name.contains('|')
+        && !name.starts_with(' ')
+        && !name.ends_with(' ')
+}
+
+fn read_dir_recursive(dir: &Path, rel: &str) -> std::io::Result<Vec<FileNode>> {
+    let mut nodes: Vec<FileNode> = Vec::new();
+    for entry in std::fs::read_dir(dir)? {
+        let entry = entry?;
+        let name = entry.file_name().to_string_lossy().into_owned();
+        let path = if rel.is_empty() {
+            name.clone()
+        } else {
+            format!("{rel}/{name}")
+        };
+        let ft = entry.file_type()?;
+        if ft.is_dir() {
+            if is_skipped_dir(&name) {
+                continue;
+            }
+            let children = read_dir_recursive(&entry.path(), &path)?;
+            nodes.push(FileNode {
+                name,
+                path,
+                kind: "dir".into(),
+                children: Some(children),
+            });
+        } else if ft.is_file() {
+            nodes.push(FileNode {
+                name,
+                path,
+                kind: "file".into(),
+                children: None,
+            });
+        }
     }
-    if trimmed.len() > 80 {
-        return Err(AppError::Invalid("il nome del progetto è troppo lungo".into()));
-    }
-    if trimmed.contains('/') || trimmed.contains('\\') || trimmed.contains("..") || trimmed.starts_with('.') {
-        return Err(AppError::Invalid("il nome del progetto contiene caratteri non ammessi".into()));
-    }
-    Ok(trimmed.to_string())
+    nodes.sort_by(|a, b| {
+        a.kind
+            .cmp(&b.kind) // directories first
+            .then_with(|| a.name.to_lowercase().cmp(&b.name.to_lowercase()))
+    });
+    Ok(nodes)
 }
 
 #[tauri::command]
-pub fn read_file_tree(state: State<'_, AppState>) -> Result<FileNode, AppError> {
-    let root = state.root()?;
-    let meta = read_meta(&root, false)?;
-    let root_name = root
-        .file_name()
-        .map(|n| n.to_string_lossy().to_string())
-        .unwrap_or_else(|| "progetto".into());
-    tree::build_tree(&root, &meta.output_dir, &root_name)
+pub async fn select_project_folder() -> AppResult<Option<String>> {
+    let picked = tauri::async_runtime::spawn_blocking(|| {
+        rfd::FileDialog::new()
+            .set_title("Seleziona la cartella del progetto LaTeX")
+            .pick_folder()
+    })
+    .await
+    .map_err(|e| AppError(format!("folder picker failed: {e}")))?;
+    Ok(picked.map(|p| p.to_string_lossy().into_owned()))
 }
 
 #[tauri::command]
-pub fn collect_labels(state: State<'_, AppState>) -> Result<labels::LabelsIndex, AppError> {
-    let root = state.root()?;
-    let meta = read_meta(&root, false)?;
-    Ok(labels::collect(&root, &meta.output_dir))
+pub async fn read_file_tree(root: String) -> AppResult<Vec<FileNode>> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let root = PathBuf::from(root);
+        if !root.is_dir() {
+            return Err(AppError("la cartella del progetto non esiste".into()));
+        }
+        Ok(read_dir_recursive(&root, "")?)
+    })
+    .await
+    .map_err(|e| AppError(format!("task failed: {e}")))?
+}
+
+#[tauri::command]
+pub async fn read_file(root: String, path: String) -> AppResult<FileContent> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let full = resolve_in_root(Path::new(&root), &path)?;
+        let bytes = std::fs::read(&full)?;
+        let size = bytes.len() as u64;
+        let probe = &bytes[..bytes.len().min(8192)];
+        let binary = probe.contains(&0);
+        if binary {
+            Ok(FileContent {
+                content: String::new(),
+                size,
+                binary: true,
+            })
+        } else {
+            Ok(FileContent {
+                content: String::from_utf8_lossy(&bytes).into_owned(),
+                size,
+                binary: false,
+            })
+        }
+    })
+    .await
+    .map_err(|e| AppError(format!("task failed: {e}")))?
+}
+
+#[tauri::command]
+pub async fn write_file(root: String, path: String, content: String) -> AppResult<()> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let full = resolve_in_root(Path::new(&root), &path)?;
+        if let Some(parent) = full.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+        let mut f = std::fs::File::create(&full)?;
+        f.write_all(content.as_bytes())?;
+        Ok(())
+    })
+    .await
+    .map_err(|e| AppError(format!("task failed: {e}")))?
+}
+
+#[tauri::command]
+pub async fn create_item(
+    root: String,
+    parent: String,
+    name: String,
+    kind: String,
+) -> AppResult<()> {
+    tauri::async_runtime::spawn_blocking(move || {
+        if !valid_name(&name) {
+            return Err(AppError(format!("nome non valido: {name:?}")));
+        }
+        let base = resolve_in_root(Path::new(&root), &parent)?;
+        let full = base.join(&name);
+        if full.exists() {
+            return Err(AppError("esiste già un elemento con questo nome".into()));
+        }
+        if kind == "dir" {
+            std::fs::create_dir_all(&full)?;
+        } else {
+            if let Some(p) = full.parent() {
+                std::fs::create_dir_all(p)?;
+            }
+            std::fs::File::create(&full)?;
+        }
+        Ok(())
+    })
+    .await
+    .map_err(|e| AppError(format!("task failed: {e}")))?
+}
+
+#[tauri::command]
+pub async fn rename_item(root: String, path: String, new_name: String) -> AppResult<()> {
+    tauri::async_runtime::spawn_blocking(move || {
+        if !valid_name(&new_name) {
+            return Err(AppError(format!("nome non valido: {new_name:?}")));
+        }
+        let full = resolve_in_root(Path::new(&root), &path)?;
+        if !full.exists() {
+            return Err(AppError("l'elemento da rinominare non esiste".into()));
+        }
+        let dest = match full.parent() {
+            Some(p) => p.join(&new_name),
+            None => return Err(AppError("percorso sorgente non valido".into())),
+        };
+        if dest.exists() {
+            return Err(AppError("esiste già un elemento con questo nome".into()));
+        }
+        std::fs::rename(&full, &dest)?;
+        Ok(())
+    })
+    .await
+    .map_err(|e| AppError(format!("task failed: {e}")))?
+}
+
+#[tauri::command]
+pub async fn delete_item(root: String, path: String) -> AppResult<()> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let rel = path.trim().trim_matches('/');
+        if rel.is_empty() || rel == "." || rel == ".." {
+            return Err(AppError("impossibile eliminare la radice del progetto".into()));
+        }
+        let full = resolve_in_root(Path::new(&root), &path)?;
+        if !full.exists() {
+            return Ok(());
+        }
+        if full.is_dir() {
+            std::fs::remove_dir_all(&full)?;
+        } else {
+            std::fs::remove_file(&full)?;
+        }
+        Ok(())
+    })
+    .await
+    .map_err(|e| AppError(format!("task failed: {e}")))?
 }
