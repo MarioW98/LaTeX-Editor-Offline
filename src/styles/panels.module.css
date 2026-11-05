@@ -176,19 +176,30 @@
   height: 100%;
 }
 
+/* These two overlays sit above the (always mounted) CodeMirror host. */
 .editorPlaceholder {
-  height: 100%;
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  background: #1b1d23;
   display: flex;
   align-items: center;
   justify-content: center;
+  text-align: center;
+  padding: 0 24px;
   color: var(--muted);
 }
 
 .binaryNotice {
-  height: 100%;
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  background: #1b1d23;
   display: flex;
   align-items: center;
   justify-content: center;
+  text-align: center;
+  padding: 0 24px;
   color: var(--yellow);
 }
 

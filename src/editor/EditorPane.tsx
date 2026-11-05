@@ -103,6 +103,7 @@ export function EditorPane() {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const viewRef = useRef<EditorView | null>(null);
   const statesRef = useRef<Map<string, EditorState>>(new Map());
+  const prevRootRef = useRef<string | null>(null);
 
   // Create the single EditorView once.
   useEffect(() => {
@@ -119,6 +120,14 @@ export function EditorPane() {
   useEffect(() => {
     const view = viewRef.current;
     if (!view) return;
+    // On project switch, drop the per-tab editor states cached from the
+    // previous project: paths are relative, so a file with the same name
+    // (e.g. main.tex) would otherwise show stale content and autosave it
+    // over the new project's file.
+    if (prevRootRef.current !== rootPath) {
+      statesRef.current.clear();
+      prevRootRef.current = rootPath;
+    }
     if (!activeTab || !rootPath) {
       view.setState(EditorState.create({ doc: "" }));
       return;
@@ -193,15 +202,25 @@ export function EditorPane() {
         ))}
       </div>
       <div className={styles.editorHost}>
-        {activeTab && binaryPaths[activeTab] ? (
+        {/*
+          The CodeMirror host div must stay mounted at all times: the single
+          EditorView is attached to it exactly once when the pane mounts.
+          Conditionally unmounting this div used to leave the view detached
+          from the DOM (tab bar visible, blank editing area, keystrokes lost),
+          which made it impossible to write in any newly created file.
+        */}
+        <div className={styles.cmHost} ref={containerRef} />
+        {activeTab && binaryPaths[activeTab] && (
           <div className={styles.binaryNotice}>
             File binario: questo tipo di file non viene modificato nell'editor.
           </div>
-        ) : activeTab ? (
-          <div className={styles.cmHost} ref={containerRef} />
-        ) : (
+        )}
+        {!activeTab && (
           <div className={styles.editorPlaceholder}>
-            <p>Apri un file .tex dall'albero a sinistra (Ctrl+S salva, F5 compila).</p>
+            <p>
+              Nessun file aperto. Creane uno con «+ file» nella colonna a
+              sinistra, oppure aprine uno esistente. (Ctrl+S salva, F5 compila)
+            </p>
           </div>
         )}
       </div>

@@ -261,7 +261,10 @@ pub async fn start_build(
     }
     let main_path = crate::commands::project::resolve_in_root(&root_path, &main_file)?;
     if !main_path.is_file() {
-        return Err(AppError(format!("file principale non trovato: {main_file}")));
+        return Err(AppError(format!(
+            "file principale non trovato: {main_file} — se il tuo documento ha un altro nome, \
+             correggilo in Impostazioni → File principale (o crea il file con «+ file»)"
+        )));
     }
     let jobname = main_path
         .file_stem()

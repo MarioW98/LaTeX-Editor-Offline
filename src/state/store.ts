@@ -308,6 +308,17 @@ export const useStore = create<StoreState>()((set, get) => ({
     await get().refreshTree();
     if (kind === "file") {
       const path = parent ? `${parent}/${name}` : name;
+      // If the configured main file does not exist yet, adopt the first
+      // .tex file the user creates, so compiling a brand-new document
+      // works without a trip to the settings dialog.
+      if (/\.tex$/i.test(name)) {
+        const { settings } = get();
+        try {
+          await api.readFile(root, settings.mainFile);
+        } catch {
+          await get().updateSettings({ mainFile: path });
+        }
+      }
       try {
         await get().openFile(path);
       } catch {
