@@ -1,5 +1,7 @@
 # LaTeX Editor Offline
 
+[![Build installers](https://github.com/MarioW98/LaTeX-Editor-Offline/actions/workflows/build.yml/badge.svg)](https://github.com/MarioW98/LaTeX-Editor-Offline/actions/workflows/build.yml)
+
 Un editor LaTeX **originale e completamente offline** per Windows, Linux e
 macOS: file sul disco, compilazione locale (latexmk o pipeline a passate),
 anteprima PDF integrata. Nessun account, nessun server, nessuna telemetria.
@@ -7,6 +9,40 @@ anteprima PDF integrata. Nessun account, nessun server, nessuna telemetria.
 > Progetto originale: codice, testi, modelli e icone sono stati scritti da
 > zero per questo editor. Non contiene codice, risorse, testi o loghi di
 > Overleaf o di altri prodotti.
+
+## 📖 Manuale d'uso
+
+**[Manuale d'uso completo in italiano](docs/manuale.md)** — installazione
+(inclusi gli avvisi SmartScreen/Gatekeeper e i prerequisiti LaTeX), uso
+dell'interfaccia e delle scorciatoie, compilazione, modelli, struttura dei
+documenti e risoluzione dei problemi.
+
+## Scarica l'app (installatori pronti)
+
+Gli installatori per Windows, Linux e macOS sono pubblicati automaticamente
+nella pagina [**Releases**](https://github.com/MarioW98/LaTeX-Editor-Offline/releases)
+a ogni push su `main` (rilascio «latest», sempre aggiornato) e per ogni tag
+`v*` (rilascio versionato). **Nessun login necessario per scaricarli.**
+I file pubblicati hanno **nomi fissi**: si possono scaricare anche con i
+link diretti qui sotto.
+
+### Download diretto (build «latest»)
+
+| Sistema | File (clic per scaricare) | Come installare |
+| --- | --- | --- |
+| Windows 10/11 (64 bit) | [LaTeX-Editor-Offline-windows-x64.msi](https://github.com/MarioW98/LaTeX-Editor-Offline/releases/download/latest/LaTeX-Editor-Offline-windows-x64.msi) — **unico installer Windows** | Doppio clic; se SmartScreen avvisa: «Ulteriori informazioni» → «Esegui comunque» |
+| Linux (Ubuntu/Debian) | [LaTeX-Editor-Offline-linux-amd64.deb](https://github.com/MarioW98/LaTeX-Editor-Offline/releases/download/latest/LaTeX-Editor-Offline-linux-amd64.deb) | `sudo dpkg -i ./*.deb` oppure doppio clic → «Installa» |
+| Linux (altre distribuzioni) | [LaTeX-Editor-Offline-linux-amd64.AppImage](https://github.com/MarioW98/LaTeX-Editor-Offline/releases/download/latest/LaTeX-Editor-Offline-linux-amd64.AppImage) | `chmod +x ./*.AppImage` poi doppio clic |
+| macOS (Apple Silicon) | [LaTeX-Editor-Offline-macos-aarch64.dmg](https://github.com/MarioW98/LaTeX-Editor-Offline/releases/download/latest/LaTeX-Editor-Offline-macos-aarch64.dmg) | Apri il .dmg, trascina l'app in *Applicazioni*; primo avvio: clic destro → «Apri» |
+
+> Se un link diretto risulta temporaneamente non disponibile, il rilascio
+> «latest» si sta rigenerando in seguito a un push: usa la pagina
+> [Releases](https://github.com/MarioW98/LaTeX-Editor-Offline/releases),
+> i file hanno gli stessi nomi.
+
+> Per compilare i documenti serve un compilatore LaTeX già installato:
+> MiKTeX (Windows) · TeX Live (Linux) · MacTeX (macOS). L'app lo rileva
+> automaticamente all'avvio.
 
 ## Caratteristiche (milestone 1)
 
@@ -75,9 +111,13 @@ Gli artefatti compaiono in `src-tauri/target/release/bundle/`:
 
 | Piattaforma | Formati prodotti | Percorso |
 | --- | --- | --- |
-| Windows | installer NSIS `.exe` + `.msi` | `bundle/nsis/`, `bundle/msi/` |
-| Linux | `.AppImage`, `.deb`, `.rpm` | `bundle/appimage/`, `bundle/deb/`, `bundle/rpm/` |
-| macOS | `.app` + `.dmg` | `bundle/macos/`, `bundle/dmg/` |
+| Windows | **`.msi`** (installer unico) | `bundle/msi/` |
+| Linux | `.AppImage`, `.deb` | `bundle/appimage/`, `bundle/deb/` |
+| macOS | `.dmg` (contiene l'app) | `bundle/dmg/` |
+
+Su Windows viene prodotto **un solo installer, il `.msi`**. Se vuoi anche
+il setup NSIS `.exe`, aggiungi `"nsis"` a `bundle.targets` in
+`src-tauri/tauri.conf.json` (e riaggiungilo al workflow).
 
 Note per piattaforma:
 
@@ -100,12 +140,20 @@ Note per piattaforma:
 
 ### Build automatica con GitHub Actions (tutti e tre gli OS)
 
-Il workflow `.github/workflows/build.yml` è già configurato:
+Il workflow `.github/workflows/build.yml` compila gli installer su Windows,
+Linux e macOS a ogni push e li pubblica nella pagina
+[Releases](https://github.com/MarioW98/LaTeX-Editor-Offline/releases)
+con **nomi fissi** (link diretti nel README, sopra):
 
-- **manuale**: scheda *Actions* → *build* → *Run workflow* → scarica gli
-  artefatti della run (uno per sistema operativo);
-- **su tag**: `git tag v0.1.0 && git push origin v0.1.0` → viene creata una
-  bozza di *Release* con tutti gli installer allegati.
+- **push su `main`** → aggiorna il rilascio «latest» (pre-release) con
+  un solo file per sistema: `.msi` (Windows), `.deb` + `.AppImage` (Linux),
+  `.dmg` (macOS), scaricabili senza login;
+- **push di un tag** (`git tag v0.1.0 && git push origin v0.1.0`) → crea il
+  rilascio versionato con note generate automaticamente;
+- **manuale**: scheda *Actions* → *Build installers* → *Run workflow*.
+
+I file restano disponibili anche come artefatti della singola run nella
+scheda *Actions* (per scaricarli occorre essere autenticati su GitHub).
 
 ## Architettura
 
@@ -216,7 +264,8 @@ latex-editor-offline/
    a una milestone successiva.
 7. **`webviewInstallMode: offlineInstaller` su Windows** per rispettare il
    vincolo «completamente offline» (a costo di un installer più grande;
-   alternativa documentata sopra).
+   alternativa documentata sopra). **Un solo installer Windows (.msi)**:
+   il bundle NSIS non viene più prodotto di default.
 8. **UI in italiano**, codice e identificatori in inglese (convenzione da
    toolchain); i messaggi Rust per l'utente sono in italiano.
 9. **Autosave attivo di default** (1200 ms), disattivabile dalle

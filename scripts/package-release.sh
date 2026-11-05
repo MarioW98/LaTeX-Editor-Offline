@@ -22,7 +22,8 @@ copy_if_present() {
 }
 
 echo "Collecting installers into $OUT_DIR:"
-copy_if_present nsis "*.exe"
+# Windows ships ONE installer: the .msi (NSIS .exe is not produced unless
+# you add "nsis" to bundle.targets in src-tauri/tauri.conf.json).
 copy_if_present msi "*.msi"
 copy_if_present deb "*.deb"
 copy_if_present appimage "*.AppImage"

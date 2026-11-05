@@ -1,0 +1,115 @@
+COME APPLICARE QUESTO AGGIORNAMENTO (dal browser, ~10-15 minuti)
+===============================================================
+Data: 5 novembre 2026
+Repository: https://github.com/MarioW98/LaTeX-Editor-Offline
+
+COSA CONTIENE
+-------------
+Questo pacchetto unisce TUTTE le novita' in un'unica applicazione:
+
+1) WINDOWS: UN SOLO ESEGUIBILE (.msi)
+   Il vecchio rilascio pubblicava 2 installer per Windows (setup .exe + .msi).
+   Ora resta solo il file .msi, come richiesto.
+
+2) README CON LINK DIRETTI
+   - link diretto al MANUALE d'uso (nuovo file docs/manuale.md);
+   - link diretti agli ESEGUIBILI di Windows, Linux e macOS.
+   I file pubblicati nelle release hanno ora nomi FISSI (senza numero di
+   versione), quindi i link nel README non si rompono quando cambia la
+   versione. Esempio di link:
+   https://github.com/MarioW98/LaTeX-Editor-Offline/releases/download/latest/LaTeX-Editor-Offline-windows-x64.msi
+
+3) MANUALE D'USO COMPLETO (nuovo file docs/manuale.md, in italiano)
+   Installazione (con avvisi SmartScreen/Gatekeeper e prerequisiti
+   MiKTeX/TeX Live/MacTeX), uso dell'interfaccia, compilazione,
+   impostazioni, scorciatoie, struttura di un documento LaTeX, modelli,
+   risoluzione problemi, backup, aggiornamento.
+
+4) CORREZIONE DELL'EDITOR (quella gia' descritta in precedenza)
+   Il bug per cui NON si riusciva a scrivere nei documenti (area di editing
+   vuota) e' corretto qui dentro: questi file includono anche quelle
+   correzioni. Se le avevi gia' applicate, incollarle di nuovo non fa danni
+   (il contenuto e' identico).
+
+FILE DA APPLICARE (10 file: 9 da sostituire + 1 da creare)
+----------------------------------------------------------
+ .github/workflows/build.yml        (sostituisce integralmente eventuali
+                                     versioni precedenti: contiene anche
+                                     la pubblicazione sulle Releases)
+ src-tauri/tauri.conf.json          (bundle: solo .msi su Windows)
+ README.md                          (manuale + download diretti)
+ src/editor/EditorPane.tsx          (fix editor)
+ src/state/store.ts                 (fix file principale automatico)
+ src/styles/panels.module.css        (fix sovrapposizioni editor)
+ src-tauri/src/commands/latex.rs    (messaggio d'errore piu' chiaro)
+ scripts/package-release.sh         (facoltativo: build locali)
+ scripts/package-release.ps1        (facoltativo: build locali su Windows)
+ docs/manuale.md                    (FILE NUOVO: il manuale)
+
+COME APPLICARLI — metodo "matita" (il piu' affidabile)
+------------------------------------------------------
+Per OGNI file da sostituire:
+
+  1. Apri il repository su GitHub e naviga fino alla cartella del file
+     (es. src/editor/ per EditorPane.tsx).
+  2. Clicca sul nome del file, poi sulla matita ("Edit this file") in alto
+     a destra.
+  3. Seleziona tutto (Ctrl+A), cancella, incolla il contenuto COMPLETO del
+     file corrispondente dentro questa cartella (aprilo con Blocco note /
+     VS Code / TextEdit).
+  4. "Commit changes" (lascia "Commit directly to the main branch").
+
+Per CREARE il manuale (docs/manuale.md):
+
+  1. Apri il repository, clicca "Add file" -> "Create new file".
+  2. Nel campo del nome scrivi ESATTAMENTE:  docs/manuale.md
+     (GitHub crea le cartelle da solo quando digiti gli slash).
+  3. Incolla tutto il contenuto di docs/manuale.md di questo pacchetto.
+  4. "Commit new file".
+
+METODO ALTERNATIVO — "Upload files" (piu' rapido)
+-------------------------------------------------
+  1. Apri il repository alla RADICE, "Add file" -> "Upload files".
+  2. Trascina dentro: README.md e le CARTELLE docs, scripts, src, src-tauri
+     di questo pacchetto (le strutture si mantengono; i file gia' presenti
+     vengono aggiornati, gli altri restano intatti).
+  3. "Commit changes".
+  4. Poi entra nella cartella .github/workflows del repository,
+     "Add file" -> "Upload files" e trascina build.yml -> "Commit changes".
+
+(Unisci i due metodi come ti e' piu' comodo: ad esempio upload per le
+cartelle e matita per build.yml.)
+
+DOPO IL COMMIT
+--------------
+  1. Il push su main avvia automaticamente la compilazione (15-25 min).
+  2. Alla fine, nella pagina "Releases" il rilascio "latest" mostra
+     UN SOLO file per Windows: LaTeX-Editor-Offline-windows-x64.msi
+     (con .deb, .AppImage e .dmg per gli altri sistemi).
+  3. Apri il README su GitHub: la sezione "Manuale d'uso" collega al
+     manuale; la tabella "Download diretto" collega agli eseguibili.
+  4. I link diventano attivi non appena la prima build e' terminata.
+
+VERIFICA RAPIDA (dopo la build)
+-------------------------------
+  a. Nel README clicca "Manuale d'uso completo in italiano": si apre
+     docs/manuale.md.
+  b. Nella tabella "Download diretto" clicca il file .msi: il download
+     parte senza passare dalla pagina Releases.
+  c. Installa il .msi, apri l'app, apri una cartella (anche vuota),
+     premi "+ file", scrivi il nome e ... scrivici dentro: funziona
+     (questa e' la correzione dell'editor).
+  d. Con il file .tex davanti: F5 compila (il primo .tex creato diventa
+     automaticamente "file principale" se non ne esisteva uno).
+
+NOTE
+----
+- SmartScreen continuera' a comparire all'installazione (app non firmata):
+  "Ulteriori informazioni" -> "Esegui comunque". E' normale.
+- Serve sempre una distribuzione LaTeX installata (MiKTeX su Windows):
+  l'app NON scarica nulla e NON include il compilatore.
+- Se un link diretto non funziona per qualche minuto, la release "latest"
+  sta rigenerandosi dopo un push: riprova poco dopo o usa la pagina
+  Releases.
+- Per riavere anche il setup .exe (sconsigliato, raddoppia lo spazio):
+  aggiungi "nsis" a bundle.targets in src-tauri/tauri.conf.json.

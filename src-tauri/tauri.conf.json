@@ -27,7 +27,7 @@
   },
   "bundle": {
     "active": true,
-    "targets": "all",
+    "targets": ["msi", "deb", "appimage", "dmg"],
     "category": "DeveloperTool",
     "shortDescription": "Offline-first LaTeX editor",
     "longDescription": "A fully offline LaTeX desktop editor: project files stay on your disk, compilation runs locally, no account and no network access.",

@@ -2,6 +2,9 @@
 # single release folder. Run from the repository root AFTER a successful
 # build on Windows.
 #
+# Windows ships ONE installer: the .msi (NSIS .exe is not produced unless
+# you add "nsis" to bundle.targets in src-tauri/tauri.conf.json).
+#
 # Usage: powershell -ExecutionPolicy Bypass -File scripts\package-release.ps1
 param(
     [string]$OutDir = "release"
@@ -12,7 +15,6 @@ $Bundle = "src-tauri\target\release\bundle"
 New-Item -ItemType Directory -Force -Path $OutDir | Out-Null
 
 $patterns = @(
-    @{ Sub = "nsis";     Pattern = "*.exe" },
     @{ Sub = "msi";      Pattern = "*.msi" }
 )
 
