@@ -150,8 +150,19 @@ export const useStore = create<StoreState>()((set, get) => ({
   },
 
   setRoot: async (root) => {
+    // Switching project (or closing it) in the middle of a build: cancel the
+    // running build first and reset its state, so the new project is
+    // compilable immediately and the logs of the two projects never mix.
+    if (get().buildRunning) {
+      await get().cancelBuild();
+      set({ buildRunning: false, buildLog: [], lastBuildSuccess: null });
+    }
+    // Every pending autosave timer is armed with a RELATIVE path: after the
+    // switch it would write into the wrong project (a same-named file exists
+    // in almost every LaTeX project). Empty the whole map.
+    for (const p of [...autosaveTimers.keys()]) clearPendingAutosave(p);
     if (!root) {
-      set({ rootPath: null, tree: [], tabs: [], activeTab: null, buffers: {}, dirty: {}, binaryPaths: {} });
+      set({ rootPath: null, tree: [], tabs: [], activeTab: null, buffers: {}, dirty: {}, binaryPaths: {}, buildLog: [], lastBuildSuccess: null });
       return;
     }
     const tree = await api.readFileTree(root);
