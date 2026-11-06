@@ -125,8 +125,9 @@ pub async fn read_file(root: String, path: String) -> AppResult<FileContent> {
         let full = resolve_in_root(Path::new(&root), &path)?;
         // Classification lives in the pure `textfile` module: only valid
         // UTF-8 without NUL bytes is reported as editable text; everything
-        // else comes back flagged non-modifiable and never lossy.
-        Ok(read_file_content(&full)?)
+        // else comes back flagged non-modifiable and never lossy. Files
+        // over 8 MiB are refused with an explicit error before loading.
+        read_file_content(&full)
     })
     .await
     .map_err(|e| AppError(format!("task failed: {e}")))?

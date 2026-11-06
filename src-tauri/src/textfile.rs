@@ -7,13 +7,21 @@
 //! (U+FFFD) can ever reach the editor buffer and be written back to disk
 //! by the autosave.
 //!
+//! Files larger than [`MAX_EDITABLE_BYTES`] are refused with an explicit
+//! error BEFORE being read: loading hundreds of MB into a string and
+//! shipping them through IPC would freeze the app.
+//!
 //! This module is intentionally free of Tauri dependencies so the
 //! classification and the read path can be unit-tested standalone
 //! (`cargo test`).
 
+use crate::error::{AppError, AppResult};
 use serde::Serialize;
-use std::io;
 use std::path::Path;
+
+/// Maximum size of a file the editor is willing to open. Anything larger
+/// is refused with an explicit error instead of being loaded.
+const MAX_EDITABLE_BYTES: u64 = 8 * 1024 * 1024;
 
 /// Payload of the `read_file` IPC command.
 #[derive(Serialize)]
@@ -36,12 +44,32 @@ pub fn as_editable_text(bytes: &[u8]) -> Option<&str> {
     std::str::from_utf8(bytes).ok()
 }
 
+/// Explicit refusal for oversized files: the size is reported in MB and
+/// the 8 MiB limit is stated, so the user knows why nothing opened.
+fn too_large(size: u64) -> AppError {
+    let mb = size as f64 / (1024.0 * 1024.0);
+    AppError(format!(
+        "file troppo grande per l'editor ({mb:.1} MB): massimo 8 MiB"
+    ))
+}
+
 /// Read a file for the editor. On success `binary == false` and `content`
 /// is the exact file text. When the file is not safely editable the
 /// content is empty and `binary == true`: lossy text is never produced.
-pub fn read_file_content(path: &Path) -> io::Result<FileContent> {
+///
+/// Files over 8 MiB are refused with an explicit error, checked on the
+/// metadata BEFORE reading (and re-checked on the bytes actually read, in
+/// case the file grew in between): no silent partial load ever happens.
+pub fn read_file_content(path: &Path) -> AppResult<FileContent> {
+    let size_on_disk = std::fs::metadata(path)?.len();
+    if size_on_disk > MAX_EDITABLE_BYTES {
+        return Err(too_large(size_on_disk));
+    }
     let bytes = std::fs::read(path)?;
     let size = bytes.len() as u64;
+    if size > MAX_EDITABLE_BYTES {
+        return Err(too_large(size));
+    }
     Ok(match as_editable_text(&bytes) {
         Some(text) => FileContent {
             content: text.to_string(),
@@ -108,5 +136,58 @@ mod tests {
         assert!(!fc.binary, "un file UTF-8 valido deve restare modificabile");
         assert_eq!(fc.content, text);
         assert_eq!(fc.size, text.len() as u64);
+    }
+
+    // B0.4 — cap dimensione: un file oltre 8 MiB non deve MAI essere
+    // caricato in memoria (e spedito via IPC): errore esplicito.
+    #[test]
+    fn oversized_file_is_rejected_with_explicit_error() {
+        let dir = tempfile::tempdir().unwrap();
+        let p = dir.path().join("enorme.tex");
+        let bytes = vec![b'a'; 9 * 1024 * 1024];
+        fs::write(&p, &bytes).unwrap();
+
+        let res = read_file_content(&p);
+        let err = res
+            .err()
+            .expect("un file da 9 MiB deve essere rifiutato, non caricato");
+        assert!(
+            err.0.contains("troppo grande"),
+            "l'errore deve essere esplicito sulla dimensione, invece: {}",
+            err.0
+        );
+        assert!(
+            err.0.contains("8 MiB"),
+            "l'errore deve dichiarare il massimo, invece: {}",
+            err.0
+        );
+    }
+
+    // B0.4 — il confine è "oltre 8 MiB": 8 MiB + 1 byte è già troppo.
+    #[test]
+    fn one_byte_over_the_cap_is_rejected() {
+        let dir = tempfile::tempdir().unwrap();
+        let p = dir.path().join("al_limite.tex");
+        let bytes = vec![b'a'; (8 * 1024 * 1024 + 1) as usize];
+        fs::write(&p, &bytes).unwrap();
+
+        assert!(
+            read_file_content(&p).is_err(),
+            "8 MiB + 1 byte deve essere rifiutato"
+        );
+    }
+
+    // B0.4 — un file normale da 1 MiB resta leggibile integralmente.
+    #[test]
+    fn one_mib_file_stays_fully_readable() {
+        let dir = tempfile::tempdir().unwrap();
+        let p = dir.path().join("normale.tex");
+        let bytes = vec![b'x'; 1024 * 1024];
+        fs::write(&p, &bytes).unwrap();
+
+        let fc = read_file_content(&p).unwrap();
+        assert!(!fc.binary);
+        assert_eq!(fc.content.len(), 1024 * 1024);
+        assert_eq!(fc.size, (1024 * 1024) as u64);
     }
 }
