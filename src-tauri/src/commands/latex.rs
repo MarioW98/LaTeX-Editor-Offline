@@ -295,7 +295,6 @@ pub async fn start_build(
         .slot
         .reserve()
         .map_err(|_| AppError("una compilazione è già in corso".into()))?;
-    drop(state);
 
     let latexmk_used = probe("latexmk").available;
     let lines: Arc<Mutex<Vec<LogLine>>> = Arc::new(Mutex::new(Vec::new()));
@@ -568,10 +567,8 @@ pub async fn read_build_log(app: AppHandle) -> AppResult<Vec<LogLine>> {
     let state = app.state::<AppState>();
     let running_log = {
         let g = state.build.lock().unwrap_or_else(|p| p.into_inner());
-        match g.as_ref() {
-            Some(job) => Some(job.lines.lock().unwrap_or_else(|p| p.into_inner()).clone()),
-            None => None,
-        }
+        g.as_ref()
+            .map(|job| job.lines.lock().unwrap_or_else(|p| p.into_inner()).clone())
     };
     Ok(running_log.unwrap_or_else(|| {
         let last = state.last_log.lock().unwrap_or_else(|p| p.into_inner());

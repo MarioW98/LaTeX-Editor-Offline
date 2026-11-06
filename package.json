@@ -6,13 +6,13 @@
   "description": "Offline-first LaTeX desktop editor built with Tauri 2, Rust, React and CodeMirror 6",
   "license": "MIT",
   "engines": {
-    "node": ">=18"
+    "node": ">=22"
   },
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
     "preview": "vite preview",
-    "test": "node --test \"src/**/*.test.ts\"",
+    "test": "node --test --experimental-strip-types \"src/**/*.test.ts\"",
     "tauri": "tauri"
   },
   "dependencies": {
