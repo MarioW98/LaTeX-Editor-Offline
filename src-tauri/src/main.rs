@@ -1,6 +1,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod atomic_io;
+mod build_slot;
 mod commands;
 mod error;
 mod state;

@@ -110,7 +110,9 @@ fn probe(tool: &str) -> ToolInfo {
 #[tauri::command]
 pub async fn detect_latex() -> LatexStatus {
     tauri::async_runtime::spawn_blocking(|| {
-        let names = ["pdflatex", "xelatex", "lualatex", "latexmk", "bibtex", "biber"];
+        let names = [
+            "pdflatex", "xelatex", "lualatex", "latexmk", "bibtex", "biber",
+        ];
         let tools: Vec<ToolInfo> = names.iter().map(|n| probe(n)).collect();
         let latexmk_available = tools
             .iter()
@@ -165,7 +167,10 @@ fn read_stream<R: std::io::Read + Send + 'static>(
     let reader = BufReader::new(r);
     for line in reader.lines() {
         let Ok(raw) = line else { break };
-        let raw = raw.trim_end_matches('\r').trim_end_matches('\n').to_string();
+        let raw = raw
+            .trim_end_matches('\r')
+            .trim_end_matches('\n')
+            .to_string();
         if raw.trim().is_empty() {
             continue;
         }
@@ -232,7 +237,14 @@ fn latexmk_args(engine: &str, main_file: &str, out_dir: &Path, shell_escape: boo
     }
     a.push("-interaction=nonstopmode".into());
     a.push("-file-line-error".into());
-    a.push(if shell_escape { "-shell-escape" } else { "-no-shell-escape" }.into());
+    a.push(
+        if shell_escape {
+            "-shell-escape"
+        } else {
+            "-no-shell-escape"
+        }
+        .into(),
+    );
     a.push("-outdir".into());
     a.push(out_dir.to_string_lossy().into_owned());
     a.push(main_file.to_string());
@@ -275,12 +287,14 @@ pub async fn start_build(
     std::fs::create_dir_all(&out_dir)?;
 
     let state = app.state::<AppState>();
-    {
-        let guard = state.build.lock().unwrap_or_else(|p| p.into_inner());
-        if guard.is_some() {
-            return Err(AppError("una compilazione è già in corso".into()));
-        }
-    }
+    // Reserve the build slot SYNCHRONOUSLY, before spawning the monitor
+    // thread: check-and-claim happen in one serialized step, so two
+    // concurrent starts can never both pass (the old guard released the
+    // lock before the thread spawned, leaving a double-start window).
+    let job_id = state
+        .slot
+        .reserve()
+        .map_err(|_| AppError("una compilazione è già in corso".into()))?;
     drop(state);
 
     let latexmk_used = probe("latexmk").available;
@@ -337,7 +351,12 @@ pub async fn start_build(
             let mut child = match cmd.spawn() {
                 Ok(c) => c,
                 Err(e) => {
-                    push_line(app, lines, &format!("impossibile avviare {program}: {e}"), "error");
+                    push_line(
+                        app,
+                        lines,
+                        &format!("impossibile avviare {program}: {e}"),
+                        "error",
+                    );
                     return false;
                 }
             };
@@ -365,12 +384,24 @@ pub async fn start_build(
             loop {
                 thread::sleep(std::time::Duration::from_millis(120));
                 let st = app.state::<AppState>();
+                // Cancellation is keyed on the job identity, not on "the
+                // child slot is empty": the slot legitimately has no child
+                // before the first registration. If the identity is gone,
+                // reap and kill our child (it may have been registered
+                // after cancel_build already ran).
+                if !st.slot.is_active(job_id) {
+                    let job = st.build.lock().unwrap_or_else(|p| p.into_inner()).take();
+                    if let Some(mut job) = job {
+                        let _ = job.child.kill();
+                        let _ = job.child.wait();
+                    }
+                    *cancelled = true;
+                    break;
+                }
                 let mut g = st.build.lock().unwrap_or_else(|p| p.into_inner());
                 match g.as_mut() {
-                    None => {
-                        *cancelled = true;
-                        break;
-                    }
+                    // Child not registered yet: keep waiting for it.
+                    None => {}
                     Some(job) => match job.child.try_wait() {
                         Ok(Some(s)) => {
                             status = Some(s);
@@ -388,7 +419,12 @@ pub async fn start_build(
             }
             let success = status.map(|s| s.success()).unwrap_or(false);
             if !success {
-                push_line(app, lines, &format!("{program} è terminato con un errore"), "error");
+                push_line(
+                    app,
+                    lines,
+                    &format!("{program} è terminato con un errore"),
+                    "error",
+                );
             }
             success
         };
@@ -396,10 +432,11 @@ pub async fn start_build(
         let mut pass = 0;
         while !phases.is_empty() {
             if registered {
-                // If the job slot is empty here, cancel_build ran between steps.
+                // Cancellation between steps is keyed on the job identity:
+                // the child slot can legitimately hold the previous step's
+                // exited child (or be empty between spawn and register).
                 let st = app2.state::<AppState>();
-                let g = st.build.lock().unwrap_or_else(|p| p.into_inner());
-                if g.is_none() {
+                if !st.slot.is_active(job_id) {
                     cancelled = true;
                 }
             }
@@ -439,7 +476,12 @@ pub async fn start_build(
                     || out_dir2.join(format!("{jobname2}.bcf")).exists())
                     && probe("biber").available
                 {
-                    push_line(&app2, &lines2, "rilevata bibliografia biblatex/biber", "info");
+                    push_line(
+                        &app2,
+                        &lines2,
+                        "rilevata bibliografia biblatex/biber",
+                        "info",
+                    );
                     extra.push(Step::Bib(
                         "biber".into(),
                         vec![
@@ -457,7 +499,11 @@ pub async fn start_build(
             }
         }
 
-        // Persist the final log for later retrieval, then free the job slot.
+        // Persist the final log for later retrieval, then free the job
+        // slot: drop our child handle FIRST, then release the identity
+        // slot ONLY if it still belongs to this job. A newer job can only
+        // reserve after finish(), so this cleanup can never erase its
+        // registration (the naive `*g = None` did, auto-cancelling it).
         {
             let st = app2.state::<AppState>();
             let mut last = st.last_log.lock().unwrap_or_else(|p| p.into_inner());
@@ -466,6 +512,8 @@ pub async fn start_build(
             *st.last_success.lock().unwrap_or_else(|p| p.into_inner()) = Some(ok && !cancelled);
             let mut g = st.build.lock().unwrap_or_else(|p| p.into_inner());
             *g = None;
+            drop(g);
+            st.slot.finish(job_id);
         }
 
         let pdf = out_dir2.join(format!("{jobname2}.pdf"));
@@ -488,7 +536,8 @@ pub async fn start_build(
         message: if latexmk_used {
             "compilazione avviata con latexmk".into()
         } else {
-            "latexmk non disponibile: sequenza multi-passaggio (motore + bibliografia + 2 passi)".into()
+            "latexmk non disponibile: sequenza multi-passaggio (motore + bibliografia + 2 passi)"
+                .into()
         },
     })
 }
@@ -496,6 +545,13 @@ pub async fn start_build(
 #[tauri::command]
 pub async fn cancel_build(app: AppHandle) -> AppResult<bool> {
     let state = app.state::<AppState>();
+    // Act only on the ACTIVE job: clear the identity slot first (this is
+    // what tells the monitor to stop and reaps any child registered
+    // afterwards), then kill the child process if it was registered.
+    let had_job = state.slot.cancel_active().is_some();
+    if !had_job {
+        return Ok(false);
+    }
     let job = {
         let mut g = state.build.lock().unwrap_or_else(|p| p.into_inner());
         g.take()
@@ -503,10 +559,8 @@ pub async fn cancel_build(app: AppHandle) -> AppResult<bool> {
     if let Some(mut job) = job {
         let _ = job.child.kill();
         let _ = job.child.wait();
-        Ok(true)
-    } else {
-        Ok(false)
     }
+    Ok(true)
 }
 
 #[tauri::command]
