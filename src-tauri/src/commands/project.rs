@@ -121,12 +121,12 @@ pub async fn read_file_tree(root: String) -> AppResult<Vec<FileNode>> {
 
 #[tauri::command]
 pub async fn read_file(root: String, path: String) -> AppResult<FileContent> {
-    tauri::async_runtime::spawn_blocking(move || {
+    tauri::async_runtime::spawn_blocking(move || -> AppResult<FileContent> {
         let full = resolve_in_root(Path::new(&root), &path)?;
         // Classification lives in the pure `textfile` module: only valid
         // UTF-8 without NUL bytes is reported as editable text; everything
         // else comes back flagged non-modifiable and never lossy.
-        read_file_content(&full)
+        Ok(read_file_content(&full)?)
     })
     .await
     .map_err(|e| AppError(format!("task failed: {e}")))?
@@ -134,12 +134,12 @@ pub async fn read_file(root: String, path: String) -> AppResult<FileContent> {
 
 #[tauri::command]
 pub async fn write_file(root: String, path: String, content: String) -> AppResult<()> {
-    tauri::async_runtime::spawn_blocking(move || {
+    tauri::async_runtime::spawn_blocking(move || -> AppResult<()> {
         let full = resolve_in_root(Path::new(&root), &path)?;
         // Atomic replacement (temp file in the same directory + fsync +
         // rename over the destination): a crash mid-write can no longer
         // truncate the file, and a failed write leaves the original intact.
-        crate::atomic_io::write_atomic(&full, content.as_bytes())
+        Ok(crate::atomic_io::write_atomic(&full, content.as_bytes())?)
     })
     .await
     .map_err(|e| AppError(format!("task failed: {e}")))?

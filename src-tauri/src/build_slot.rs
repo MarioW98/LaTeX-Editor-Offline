@@ -31,10 +31,6 @@ pub struct BuildSlot {
 }
 
 impl BuildSlot {
-    pub fn new() -> Self {
-        Self::default()
-    }
-
     /// Claim the slot synchronously and obtain a fresh job id. Fails with
     /// [`SlotBusy`] if a build is already running — there is no window in
     /// which two callers can both succeed.
@@ -83,7 +79,7 @@ mod tests {
     // (a) seconda reserve() con slot occupato → Err.
     #[test]
     fn second_reserve_while_busy_fails() {
-        let slot = BuildSlot::new();
+        let slot = BuildSlot::default();
         let a = slot.reserve().expect("la prima reserve deve riuscire");
         assert_eq!(
             slot.reserve(),
@@ -103,7 +99,7 @@ mod tests {
     // e il job nuovo si autocancellava.
     #[test]
     fn late_finish_of_old_job_does_not_release_new_job_slot() {
-        let slot = BuildSlot::new();
+        let slot = BuildSlot::default();
         let old = slot.reserve().unwrap();
         assert!(
             slot.finish(old),
@@ -124,7 +120,7 @@ mod tests {
     // (b') il caso arbitrario: finish di un id mai riservato è un no-op.
     #[test]
     fn finish_of_unknown_id_is_a_noop() {
-        let slot = BuildSlot::new();
+        let slot = BuildSlot::default();
         let a = slot.reserve().unwrap();
         assert!(!slot.finish(9999));
         assert!(slot.is_active(a));
@@ -135,7 +131,7 @@ mod tests {
     // (c) cancel tocca solo il job attivo.
     #[test]
     fn cancel_touches_only_the_active_job() {
-        let slot = BuildSlot::new();
+        let slot = BuildSlot::default();
         let a = slot.reserve().unwrap();
         assert_eq!(
             slot.cancel_active(),
@@ -161,7 +157,7 @@ mod tests {
     // esattamente una.
     #[test]
     fn concurrent_reserve_on_empty_slot_exactly_one_wins() {
-        let slot = Arc::new(BuildSlot::new());
+        let slot = Arc::new(BuildSlot::default());
         let mut handles = Vec::new();
         for _ in 0..8 {
             let s = Arc::clone(&slot);
@@ -176,7 +172,7 @@ mod tests {
             winners.len()
         );
         // gli id assegnati restano univoci anche per le reserve rifiutate
-        let slot = BuildSlot::new();
+        let slot = BuildSlot::default();
         let a = slot.reserve().unwrap();
         slot.finish(a).then_some(()).unwrap();
         let b = slot.reserve().unwrap();
@@ -186,7 +182,7 @@ mod tests {
     // (d') con lo slot occupato, nessuna reserve concorrente riesce.
     #[test]
     fn concurrent_reserve_on_busy_slot_all_fail() {
-        let slot = Arc::new(BuildSlot::new());
+        let slot = Arc::new(BuildSlot::default());
         let active = slot.reserve().unwrap();
         let mut handles = Vec::new();
         for _ in 0..8 {
