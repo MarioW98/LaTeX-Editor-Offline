@@ -80,8 +80,22 @@ export interface StoreState {
 
 // Debounce timers for autosave, one per file path.
 // Exported only so the discriminant tests can assert that no timer is ever
-// armed for a non-modifiable file (see src/state/store.autosave.test.ts).
+// armed for a non-modifiable file (see src/state/store.autosave.test.ts)
+// and that closing a tab cancels its pending timer
+// (see src/state/store.tabs.test.ts).
 export const autosaveTimers = new Map<string, ReturnType<typeof setTimeout>>();
+
+/**
+ * Cancels the pending autosave timer of `path`, if any. Called when the
+ * tab is closed or renamed: a timer left alive would fire after the fact
+ * and rewrite the buffer on disk — in the rename case under the OLD path,
+ * recreating the file just renamed.
+ */
+export function clearPendingAutosave(path: string) {
+  const t = autosaveTimers.get(path);
+  if (t) clearTimeout(t);
+  autosaveTimers.delete(path);
+}
 
 function relToRoot(file: string, root: string): string | null {
   let f = file.replace(/\\/g, "/");
@@ -215,6 +229,9 @@ export const useStore = create<StoreState>()((set, get) => ({
   },
 
   closeTab: (path) => {
+    // A tab closed within the debounce window must not be autosaved anyway:
+    // cancel the pending timer before dropping the tab.
+    clearPendingAutosave(path);
     set((s) => {
       const tabs = s.tabs.filter((t) => t.path !== path);
       let activeTab = s.activeTab;
@@ -339,6 +356,19 @@ export const useStore = create<StoreState>()((set, get) => ({
     const root = get().rootPath;
     if (!root) return;
     await api.renameItem(root, path, newName);
+    // The delayed autosave timer of the old path must be cancelled BEFORE
+    // closing the tab: firing after the rename it would rewrite the buffer
+    // under the OLD name, recreating the file just renamed. Buffer and
+    // dirty flag of the old path go too — openFile recreates them reading
+    // the renamed file from disk.
+    clearPendingAutosave(path);
+    set((s) => {
+      const buffers = { ...s.buffers };
+      delete buffers[path];
+      const dirty = { ...s.dirty };
+      delete dirty[path];
+      return { buffers, dirty };
+    });
     // If an open tab pointed at the old path, close it.
     get().closeTab(path);
     await get().refreshTree();
