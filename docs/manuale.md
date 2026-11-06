@@ -2,6 +2,9 @@
 
 Versione del manuale: 1.0 (app 0.1.x) · lingua: italiano · licenza dell'app: MIT
 
+> Questo manuale è disponibile anche in **[formato PDF](manuale.pdf)** pronto
+> da scaricare, stampare o archiviare offline (copertina e indice inclusi).
+
 Benvenuto! Questo manuale copre tutto il percorso: installazione, uso
 dell'interfaccia, compilazione, modelli e organizzazione dei documenti LaTeX,
 fino alla risoluzione dei problemi. L'app è **completamente offline**: nessun

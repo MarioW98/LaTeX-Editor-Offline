@@ -17,6 +17,11 @@ anteprima PDF integrata. Nessun account, nessun server, nessuna telemetria.
 dell'interfaccia e delle scorciatoie, compilazione, modelli, struttura dei
 documenti e risoluzione dei problemi.
 
+**[Manuale d'uso in PDF (A4)](docs/manuale.pdf)** — la stessa documentazione
+in un unico file pronto da **scaricare, stampare o archiviare offline**:
+copertina, indice e le 12 sezioni del manuale. Aggiornato insieme alla
+versione web.
+
 ## Scarica l'app (installatori pronti)
 
 Gli installatori per Windows, Linux e macOS sono pubblicati automaticamente
