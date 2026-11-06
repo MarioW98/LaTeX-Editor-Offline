@@ -5,6 +5,7 @@ mod commands;
 mod error;
 mod state;
 mod textfile;
+mod trashbin;
 
 use state::AppState;
 

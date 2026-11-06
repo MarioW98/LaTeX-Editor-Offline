@@ -15,6 +15,7 @@ function Row({ node, depth, expanded, toggle }: RowProps) {
   const activeTab = useStore((s) => s.activeTab);
   const [editing, setEditing] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [justTrashed, setJustTrashed] = useState(false);
   const [draft, setDraft] = useState(node.name);
 
   const doRename = () => {
@@ -45,6 +46,13 @@ function Row({ node, depth, expanded, toggle }: RowProps) {
     useStore
       .getState()
       .deleteItem(node.path)
+      .then(() => {
+        setConfirmDelete(false);
+        // The backend moved the item to the system trash: make it visible,
+        // so the user knows it is recoverable and not gone forever.
+        setJustTrashed(true);
+        setTimeout(() => setJustTrashed(false), 2000);
+      })
       .catch((e) => alert(`eliminazione fallita: ${e}`));
   };
 
@@ -86,14 +94,14 @@ function Row({ node, depth, expanded, toggle }: RowProps) {
             rin
           </button>
           <button
-            title="Elimina"
+            title={justTrashed ? "Spostato nel cestino" : "Sposta nel cestino"}
             className={confirmDelete ? styles.treeDeleteArmed : ""}
             onClick={(e) => {
               e.stopPropagation();
               doDelete();
             }}
           >
-            {confirmDelete ? "sicuro?" : "del"}
+            {justTrashed ? "cestino ✓" : confirmDelete ? "sicuro?" : "del"}
           </button>
         </span>
       </div>

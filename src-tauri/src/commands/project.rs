@@ -212,12 +212,10 @@ pub async fn delete_item(root: String, path: String) -> AppResult<()> {
         if !full.exists() {
             return Ok(());
         }
-        if full.is_dir() {
-            std::fs::remove_dir_all(&full)?;
-        } else {
-            std::fs::remove_file(&full)?;
-        }
-        Ok(())
+        // Move to the system trash instead of a permanent recursive delete:
+        // if the trash is unavailable this fails with an explicit error and
+        // the item stays on disk — never a silent permanent deletion.
+        crate::trashbin::move_to_trash(&full).map_err(AppError)
     })
     .await
     .map_err(|e| AppError(format!("task failed: {e}")))?
