@@ -3,6 +3,7 @@ use std::io::Write as _;
 use std::path::{Component, Path, PathBuf};
 
 use crate::error::{AppError, AppResult};
+use crate::textfile::{read_file_content, FileContent};
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -12,14 +13,6 @@ pub struct FileNode {
     pub path: String,
     pub kind: String, // "file" | "dir"
     pub children: Option<Vec<FileNode>>,
-}
-
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct FileContent {
-    pub content: String,
-    pub size: u64,
-    pub binary: bool,
 }
 
 const SKIP_DIRS: [&str; 5] = [".git", "node_modules", "target", ".latex-editor", "dist"];
@@ -131,23 +124,10 @@ pub async fn read_file_tree(root: String) -> AppResult<Vec<FileNode>> {
 pub async fn read_file(root: String, path: String) -> AppResult<FileContent> {
     tauri::async_runtime::spawn_blocking(move || {
         let full = resolve_in_root(Path::new(&root), &path)?;
-        let bytes = std::fs::read(&full)?;
-        let size = bytes.len() as u64;
-        let probe = &bytes[..bytes.len().min(8192)];
-        let binary = probe.contains(&0);
-        if binary {
-            Ok(FileContent {
-                content: String::new(),
-                size,
-                binary: true,
-            })
-        } else {
-            Ok(FileContent {
-                content: String::from_utf8_lossy(&bytes).into_owned(),
-                size,
-                binary: false,
-            })
-        }
+        // Classification lives in the pure `textfile` module: only valid
+        // UTF-8 without NUL bytes is reported as editable text; everything
+        // else comes back flagged non-modifiable and never lossy.
+        read_file_content(&full)
     })
     .await
     .map_err(|e| AppError(format!("task failed: {e}")))?
@@ -227,7 +207,9 @@ pub async fn delete_item(root: String, path: String) -> AppResult<()> {
     tauri::async_runtime::spawn_blocking(move || {
         let rel = path.trim().trim_matches('/');
         if rel.is_empty() || rel == "." || rel == ".." {
-            return Err(AppError("impossibile eliminare la radice del progetto".into()));
+            return Err(AppError(
+                "impossibile eliminare la radice del progetto".into(),
+            ));
         }
         let full = resolve_in_root(Path::new(&root), &path)?;
         if !full.exists() {

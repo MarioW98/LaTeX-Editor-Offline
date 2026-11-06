@@ -1,94 +1,9 @@
 import { useEffect, useRef } from "react";
-import { EditorState } from "@codemirror/state";
-import {
-  EditorView,
-  drawSelection,
-  dropCursor,
-  highlightActiveLine,
-  highlightActiveLineGutter,
-  highlightSpecialChars,
-  keymap,
-  lineNumbers,
-  rectangularSelection,
-  crosshairCursor,
-} from "@codemirror/view";
-import {
-  defaultKeymap,
-  history,
-  historyKeymap,
-  indentWithTab,
-} from "@codemirror/commands";
-import {
-  autocompletion,
-  closeBrackets,
-  closeBracketsKeymap,
-  completionKeymap,
-} from "@codemirror/autocomplete";
-import { highlightSelectionMatches, searchKeymap } from "@codemirror/search";
-import {
-  bracketMatching,
-  foldGutter,
-  foldKeymap,
-  indentOnInput,
-} from "@codemirror/language";
-import { useStore } from "../state/store";
-import {
-  editorTheme,
-  latexAutocompletion,
-  latexHighlighting,
-  latexLanguage,
-} from "./latex";
+import type { EditorState } from "@codemirror/state";
+import { EditorView } from "@codemirror/view";
+import { useStore } from "../state/store.ts";
+import { createEditorState } from "./docState.ts";
 import styles from "../styles/panels.module.css";
-
-function makeExtensions(path: string, fontSize: number): readonly never[] {
-  return [
-    lineNumbers(),
-    highlightActiveLineGutter(),
-    highlightSpecialChars(),
-    history(),
-    foldGutter(),
-    drawSelection(),
-    dropCursor(),
-    EditorState.allowMultipleSelections.of(true),
-    indentOnInput(),
-    bracketMatching(),
-    closeBrackets(),
-    autocompletion(latexAutocompletion),
-    rectangularSelection(),
-    crosshairCursor(),
-    highlightActiveLine(),
-    highlightSelectionMatches(),
-    keymap.of([
-      ...closeBracketsKeymap,
-      ...defaultKeymap,
-      ...searchKeymap,
-      ...historyKeymap,
-      ...foldKeymap,
-      ...completionKeymap,
-      indentWithTab,
-      {
-        key: "Mod-s",
-        run: () => {
-          const p = useStore.getState().activeTab;
-          if (!p) return false;
-          useStore.getState().saveFile(p);
-          return true;
-        },
-      },
-    ]),
-    latexLanguage,
-    latexHighlighting,
-    editorTheme(fontSize),
-    EditorView.lineWrapping,
-    EditorView.updateListener.of((u) => {
-      if (u.docChanged) {
-        const current = useStore.getState().activeTab;
-        if (!current || current !== path) return;
-        useStore.getState().updateBuffer(current, u.state.doc.toString());
-      }
-    }),
-  ] as never[];
-}
 
 export function EditorPane() {
   const rootPath = useStore((s) => s.rootPath);
@@ -129,7 +44,7 @@ export function EditorPane() {
       prevRootRef.current = rootPath;
     }
     if (!activeTab || !rootPath) {
-      view.setState(EditorState.create({ doc: "" }));
+      view.setState(createEditorState("", "", fontSize, true));
       return;
     }
     const cached = statesRef.current.get(activeTab);
@@ -137,25 +52,26 @@ export function EditorPane() {
       view.setState(cached);
       return;
     }
-    const content = buffers[activeTab] ?? "";
-    const st = EditorState.create({
-      doc: content,
-      extensions: makeExtensions(activeTab, fontSize),
-    });
+    // Files flagged non-modifiable (binary or non UTF-8) get a read-only
+    // document state: they cannot be typed into and never reach autosave.
+    const st = createEditorState(
+      buffers[activeTab] ?? "",
+      activeTab,
+      fontSize,
+      !binaryPaths[activeTab],
+    );
     statesRef.current.set(activeTab, st);
     view.setState(st);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTab, rootPath]);
 
-  // Apply the chosen font size to the current state.
+  // Apply the chosen font size to the current state (preserving the
+  // read-only flag of non-modifiable files).
   useEffect(() => {
     const view = viewRef.current;
     if (!view || !activeTab) return;
-    const st = EditorState.create({
-      doc: view.state.doc,
-      selection: view.state.selection,
-      extensions: makeExtensions(activeTab, fontSize),
-    });
+    const editable = !useStore.getState().binaryPaths[activeTab];
+    const st = createEditorState(view.state.doc, activeTab, fontSize, editable);
     statesRef.current.set(activeTab, st);
     view.setState(st);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -212,7 +128,8 @@ export function EditorPane() {
         <div className={styles.cmHost} ref={containerRef} />
         {activeTab && binaryPaths[activeTab] && (
           <div className={styles.binaryNotice}>
-            File binario: questo tipo di file non viene modificato nell'editor.
+            File binario o di testo non UTF-8: aperto in sola lettura per
+            proteggerne il contenuto.
           </div>
         )}
         {!activeTab && (

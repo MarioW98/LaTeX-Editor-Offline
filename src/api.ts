@@ -7,7 +7,7 @@ import type {
   LatexStatus,
   LogLine,
   ProjectSettings,
-} from "./types";
+} from "./types.ts";
 
 /**
  * Thin, fully typed wrapper around the 16 Tauri commands.

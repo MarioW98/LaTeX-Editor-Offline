@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import { api } from "../api";
+import { api } from "../api.ts";
 import {
   DEFAULT_PROJECT_SETTINGS,
   type AppSettings,
@@ -8,8 +8,8 @@ import {
   type LatexStatus,
   type LogLine,
   type ProjectSettings,
-} from "../types";
-import { TEMPLATES } from "../features/templates";
+} from "../types.ts";
+import { TEMPLATES } from "../features/templates.ts";
 
 interface OpenTab {
   path: string;
@@ -79,7 +79,9 @@ export interface StoreState {
 }
 
 // Debounce timers for autosave, one per file path.
-const autosaveTimers = new Map<string, ReturnType<typeof setTimeout>>();
+// Exported only so the discriminant tests can assert that no timer is ever
+// armed for a non-modifiable file (see src/state/store.autosave.test.ts).
+export const autosaveTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
 function relToRoot(file: string, root: string): string | null {
   let f = file.replace(/\\/g, "/");
@@ -227,6 +229,12 @@ export const useStore = create<StoreState>()((set, get) => ({
   setActiveTab: (path) => set({ activeTab: path }),
 
   updateBuffer: (path, content) => {
+    // Files flagged non-modifiable (binary or non UTF-8) are shown read-only
+    // in the editor: never buffer their content and never schedule an
+    // autosave for them. This is an explicit guard, not a side effect of
+    // the read-only editor state: the backend never returns lossy text for
+    // these files, and any write here could corrupt the file on disk.
+    if (get().binaryPaths[path]) return;
     set((s) => ({
       buffers: { ...s.buffers, [path]: content },
       dirty: { ...s.dirty, [path]: true },
