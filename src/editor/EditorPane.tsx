@@ -2,7 +2,7 @@ import { useEffect, useRef } from "react";
 import type { EditorState } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
 import { useStore } from "../state/store.ts";
-import { createEditorState } from "./docState.ts";
+import { createEditorState, fontSizeEffect } from "./docState.ts";
 import styles from "../styles/panels.module.css";
 
 export function EditorPane() {
@@ -50,30 +50,31 @@ export function EditorPane() {
     const cached = statesRef.current.get(activeTab);
     if (cached) {
       view.setState(cached);
-      return;
+    } else {
+      // Files flagged non-modifiable (binary or non UTF-8) get a read-only
+      // document state: they cannot be typed into and never reach autosave.
+      const st = createEditorState(
+        buffers[activeTab] ?? "",
+        activeTab,
+        fontSize,
+        !binaryPaths[activeTab],
+      );
+      statesRef.current.set(activeTab, st);
+      view.setState(st);
     }
-    // Files flagged non-modifiable (binary or non UTF-8) get a read-only
-    // document state: they cannot be typed into and never reach autosave.
-    const st = createEditorState(
-      buffers[activeTab] ?? "",
-      activeTab,
-      fontSize,
-      !binaryPaths[activeTab],
-    );
-    statesRef.current.set(activeTab, st);
-    view.setState(st);
+    // A state cached before a font-size change still carries the old
+    // theme: reapply the current size (a no-op when already current).
+    view.dispatch({ effects: fontSizeEffect(fontSize) });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTab, rootPath]);
 
-  // Apply the chosen font size to the current state (preserving the
-  // read-only flag of non-modifiable files).
+  // Apply the chosen font size by RECONFIGURING the theme compartment, in
+  // place: the undo history, the code folding and the selection of the
+  // open document survive (recreating the state used to wipe them).
   useEffect(() => {
     const view = viewRef.current;
-    if (!view || !activeTab) return;
-    const editable = !useStore.getState().binaryPaths[activeTab];
-    const st = createEditorState(view.state.doc, activeTab, fontSize, editable);
-    statesRef.current.set(activeTab, st);
-    view.setState(st);
+    if (!view) return;
+    view.dispatch({ effects: fontSizeEffect(fontSize) });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fontSize]);
 

@@ -1,5 +1,5 @@
-import { EditorState } from "@codemirror/state";
-import type { Text } from "@codemirror/state";
+import { Compartment, EditorState } from "@codemirror/state";
+import type { Extension, StateEffect, Text } from "@codemirror/state";
 import {
   EditorView,
   drawSelection,
@@ -38,6 +38,28 @@ import {
   latexHighlighting,
   latexLanguage,
 } from "./latex.ts";
+
+/**
+ * Compartment that holds the theme (font size). The font size is applied
+ * by RECONFIGURING this compartment (see [`fontSizeEffect`]) instead of
+ * recreating the document state: the undo/redo history, the code folding
+ * and the selection of the user survive every size change.
+ */
+export const editorThemeCompartment = new Compartment();
+
+/**
+ * Effect that re-applies `fontSize` to any state built by
+ * [`createEditorState`]. EditorPane dispatches it on the view when the
+ * font size changes; the same effect drives the state-level test
+ * (src/editor/docState.fontsize.test.ts).
+ */
+export function fontSizeEffect(fontSize: number): StateEffect<Extension> {
+  // Upstream types `reconfigure` as `StateEffect<unknown>`; the value it
+  // carries is the theme Extension built here.
+  return editorThemeCompartment.reconfigure(
+    editorTheme(fontSize),
+  ) as StateEffect<Extension>;
+}
 
 /**
  * Extension set shared by every editor document.
@@ -89,7 +111,7 @@ export function makeExtensions(
     ]),
     latexLanguage,
     latexHighlighting,
-    editorTheme(fontSize),
+    editorThemeCompartment.of(editorTheme(fontSize)),
     EditorView.lineWrapping,
     EditorView.updateListener.of((u) => {
       if (u.docChanged) {
