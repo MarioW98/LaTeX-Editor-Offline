@@ -14,6 +14,12 @@
 //! - `is_active(id)` is the cancellation signal polled by the monitor: the
 //!   slot can legitimately have no child registered yet, so "no child" must
 //!   not be confused with "cancelled".
+//! - `poll_action` decides, at each monitor poll, what the polling monitor
+//!   does — and the ONLY kill target it can ever order is the monitor's OWN
+//!   child (a local variable of its thread). The naive code took whatever
+//!   child sat in the shared `state.build` and killed it, whichever job
+//!   owned it: the cancelled monitor of job A could kill the child of a
+//!   job B started right after the cancellation.
 
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Mutex;
@@ -67,6 +73,50 @@ impl BuildSlot {
     /// touched by this call.
     pub fn cancel_active(&self) -> Option<u64> {
         self.active.lock().unwrap_or_else(|p| p.into_inner()).take()
+    }
+}
+
+/// State of the monitor's OWN child as observed by `try_wait` at a poll
+/// iteration (pure representation: no process handle involved).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum OwnChild {
+    /// Still running.
+    Running,
+    /// Exited, with this overall success flag.
+    Exited { success: bool },
+    /// `try_wait` failed: the child state is lost, treat as failure.
+    Lost,
+}
+
+/// What the monitor does at a poll iteration. The kill target, when there
+/// is one, is ALWAYS the monitor's own child: no decision exists that
+/// touches a child registered by another job.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PollAction {
+    /// The job still owns the slot and its child is running: keep polling.
+    KeepWaiting,
+    /// The job no longer owns the slot (cancelled): kill and reap the OWN
+    /// child — a local variable of this monitor's thread. Killing a child
+    /// that already exited is a harmless no-op, so this is safe even when
+    /// the exit raced with the cancellation.
+    CancelOwn,
+    /// The own child exited (or was lost): finish the step with this
+    /// outcome.
+    Finish { success: bool },
+}
+
+/// Pure decision taken at every monitor poll, based ONLY on whether the
+/// polling job still owns the slot and on the state of its OWN child.
+/// The naive code instead took whatever child was registered in the
+/// shared `state.build` and killed it, whichever job owned it.
+pub fn poll_action(slot_active: bool, own_child: OwnChild) -> PollAction {
+    if !slot_active {
+        return PollAction::CancelOwn;
+    }
+    match own_child {
+        OwnChild::Running => PollAction::KeepWaiting,
+        OwnChild::Exited { success } => PollAction::Finish { success },
+        OwnChild::Lost => PollAction::Finish { success: false },
     }
 }
 
@@ -198,5 +248,72 @@ mod tests {
             slot.is_active(active),
             "il job attivo non deve essere toccato"
         );
+    }
+
+    // (e) B0.5 — scenario della race residua: job A attivo, l'utente
+    // cancella, il job B riserva SUBITO dopo. La logica di polling del
+    // monitor di A può ordinare l'uccisione del PROPRIO figlio soltanto:
+    // non esiste decisione che tocchi il figlio che B (nel frattempo) ha
+    // registrato nello stato condiviso.
+    #[test]
+    fn cancelled_monitor_kills_only_its_own_child_never_job_b() {
+        let slot = BuildSlot::default();
+        let a = slot.reserve().unwrap();
+        // L'utente cancella (cancel_build svuota lo slot) e B riserva
+        // subito dopo: è il momento in cui il vecchio codice prelevava da
+        // state.build il figlio QUALUNQUE e lo uccide — quello di B.
+        slot.cancel_active();
+        let b = slot.reserve().unwrap();
+
+        // Poll del monitor di A: la sua identità non è più attiva → può
+        // ordinare SOLO l'uccisione del proprio figlio locale.
+        let decision_a = poll_action(slot.is_active(a), OwnChild::Running);
+        assert_eq!(
+            decision_a,
+            PollAction::CancelOwn,
+            "il monitor cancellato deve poter uccidere solo il PROPRIO figlio, decisione: {decision_a:?}"
+        );
+
+        // La decisione di A non ha toccato nulla di B: B è ancora il
+        // proprietario dello slot e il suo polling procede normalmente.
+        assert!(!slot.is_active(a), "A non deve essere più attivo");
+        assert!(slot.is_active(b), "B è stato toccato dalla cancellazione di A");
+        assert_eq!(
+            poll_action(slot.is_active(b), OwnChild::Running),
+            PollAction::KeepWaiting,
+            "il monitor di B deve continuare ad attendere il proprio figlio"
+        );
+        assert_eq!(
+            poll_action(slot.is_active(b), OwnChild::Exited { success: true }),
+            PollAction::Finish { success: true },
+            "il monitor di B deve poter portare a termine il proprio passo"
+        );
+    }
+
+    // (e') B0.5 — tabella completa della decisione di polling: la decisione
+    // dipende SOLO dall'identità del job che fa il polling e dal proprio
+    // figlio; il figlio uscito perde solo quando lo slot non è più suo.
+    #[test]
+    fn poll_action_table() {
+        // Slot attivo: il figlio decide l'esito del passo.
+        assert_eq!(poll_action(true, OwnChild::Running), PollAction::KeepWaiting);
+        assert_eq!(
+            poll_action(true, OwnChild::Exited { success: true }),
+            PollAction::Finish { success: true }
+        );
+        assert_eq!(
+            poll_action(true, OwnChild::Exited { success: false }),
+            PollAction::Finish { success: false }
+        );
+        assert_eq!(
+            poll_action(true, OwnChild::Lost),
+            PollAction::Finish { success: false }
+        );
+        // Slot non più posseduto: si uccide e si ricava il PROPRIO figlio
+        // (kill su un figlio già uscito = no-op innocuo), qualunque sia il
+        // suo stato.
+        assert_eq!(poll_action(false, OwnChild::Running), PollAction::CancelOwn);
+        assert_eq!(poll_action(false, OwnChild::Exited { success: true }), PollAction::CancelOwn);
+        assert_eq!(poll_action(false, OwnChild::Lost), PollAction::CancelOwn);
     }
 }

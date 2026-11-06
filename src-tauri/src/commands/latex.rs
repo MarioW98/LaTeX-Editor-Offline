@@ -8,6 +8,7 @@ use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
+use crate::build_slot::{poll_action, OwnChild, PollAction};
 use crate::error::{AppError, AppResult};
 use crate::state::{AppState, BuildJob};
 use tauri::{AppHandle, Emitter, Manager};
@@ -361,11 +362,16 @@ pub async fn start_build(
             };
             let stdout = child.stdout.take().unwrap();
             let stderr = child.stderr.take().unwrap();
+            // The child stays a LOCAL variable of this monitor thread: it
+            // is registered in the shared state for its LOG only. Nobody
+            // but this thread can kill or reap the process — the old design
+            // kept the child in the shared state and the cancellation paths
+            // took and killed whatever sat there, whichever job owned it.
             {
                 let st = app.state::<AppState>();
                 let mut g = st.build.lock().unwrap_or_else(|p| p.into_inner());
                 *g = Some(BuildJob {
-                    child,
+                    id: job_id,
                     lines: lines.clone(),
                 });
             }
@@ -379,36 +385,30 @@ pub async fn start_build(
                 let l = lines.clone();
                 thread::spawn(move || read_stream(stderr, true, a, l))
             };
-            let mut status: Option<std::process::ExitStatus> = None;
+            let mut step_success = false;
             loop {
                 thread::sleep(std::time::Duration::from_millis(120));
                 let st = app.state::<AppState>();
-                // Cancellation is keyed on the job identity, not on "the
-                // child slot is empty": the slot legitimately has no child
-                // before the first registration. If the identity is gone,
-                // reap and kill our child (it may have been registered
-                // after cancel_build already ran).
-                if !st.slot.is_active(job_id) {
-                    let job = st.build.lock().unwrap_or_else(|p| p.into_inner()).take();
-                    if let Some(mut job) = job {
-                        let _ = job.child.kill();
-                        let _ = job.child.wait();
+                // The decision is taken on THIS job's identity and on THIS
+                // monitor's own child only: a cancelled job kills and reaps
+                // its own child, never a child registered by a newer job.
+                let own = match child.try_wait() {
+                    Ok(Some(s)) => OwnChild::Exited { success: s.success() },
+                    Ok(None) => OwnChild::Running,
+                    Err(_) => OwnChild::Lost,
+                };
+                match poll_action(st.slot.is_active(job_id), own) {
+                    PollAction::KeepWaiting => {}
+                    PollAction::CancelOwn => {
+                        let _ = child.kill();
+                        let _ = child.wait();
+                        *cancelled = true;
+                        break;
                     }
-                    *cancelled = true;
-                    break;
-                }
-                let mut g = st.build.lock().unwrap_or_else(|p| p.into_inner());
-                match g.as_mut() {
-                    // Child not registered yet: keep waiting for it.
-                    None => {}
-                    Some(job) => match job.child.try_wait() {
-                        Ok(Some(s)) => {
-                            status = Some(s);
-                            break;
-                        }
-                        Ok(None) => {}
-                        Err(_) => break,
-                    },
+                    PollAction::Finish { success } => {
+                        step_success = success;
+                        break;
+                    }
                 }
             }
             let _ = h1.join();
@@ -416,8 +416,7 @@ pub async fn start_build(
             if *cancelled {
                 return false;
             }
-            let success = status.map(|s| s.success()).unwrap_or(false);
-            if !success {
+            if !step_success {
                 push_line(
                     app,
                     lines,
@@ -425,7 +424,7 @@ pub async fn start_build(
                     "error",
                 );
             }
-            success
+            step_success
         };
 
         let mut pass = 0;
@@ -499,10 +498,12 @@ pub async fn start_build(
         }
 
         // Persist the final log for later retrieval, then free the job
-        // slot: drop our child handle FIRST, then release the identity
-        // slot ONLY if it still belongs to this job. A newer job can only
-        // reserve after finish(), so this cleanup can never erase its
-        // registration (the naive `*g = None` did, auto-cancelling it).
+        // slot. The child handle is local to run_step and is already reaped
+        // there; the identity slot is released ONLY if it still belongs to
+        // this job, and the running-log registration is cleared ONLY if it
+        // is still ours: a newer job that started right after the
+        // cancellation has registered its own log — the old monitor must
+        // not wipe it (and, with the child now local, can never kill it).
         {
             let st = app2.state::<AppState>();
             let mut last = st.last_log.lock().unwrap_or_else(|p| p.into_inner());
@@ -510,7 +511,9 @@ pub async fn start_build(
             *last = buf.clone();
             *st.last_success.lock().unwrap_or_else(|p| p.into_inner()) = Some(ok && !cancelled);
             let mut g = st.build.lock().unwrap_or_else(|p| p.into_inner());
-            *g = None;
+            if g.as_ref().map(|j| j.id) == Some(job_id) {
+                *g = None;
+            }
             drop(g);
             st.slot.finish(job_id);
         }
@@ -544,22 +547,12 @@ pub async fn start_build(
 #[tauri::command]
 pub async fn cancel_build(app: AppHandle) -> AppResult<bool> {
     let state = app.state::<AppState>();
-    // Act only on the ACTIVE job: clear the identity slot first (this is
-    // what tells the monitor to stop and reaps any child registered
-    // afterwards), then kill the child process if it was registered.
-    let had_job = state.slot.cancel_active().is_some();
-    if !had_job {
-        return Ok(false);
-    }
-    let job = {
-        let mut g = state.build.lock().unwrap_or_else(|p| p.into_inner());
-        g.take()
-    };
-    if let Some(mut job) = job {
-        let _ = job.child.kill();
-        let _ = job.child.wait();
-    }
-    Ok(true)
+    // Only the identity slot is cleared. The monitor of the cancelled job
+    // notices at its next poll (<= 120 ms) and kills and reaps its OWN
+    // child, a local variable of its thread. Nothing is ever taken or
+    // killed through the shared state, where a newer job started right
+    // after the cancellation may already have registered its own log.
+    Ok(state.slot.cancel_active().is_some())
 }
 
 #[tauri::command]

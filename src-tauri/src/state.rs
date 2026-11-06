@@ -1,4 +1,3 @@
-use std::process::Child;
 use std::sync::{Arc, Mutex};
 
 use crate::build_slot::BuildSlot;
@@ -7,11 +6,13 @@ use crate::commands::latex::LogLine;
 /// Mutable state shared between commands and the build monitor thread.
 #[derive(Default)]
 pub struct AppState {
-    /// Child process of the current step, registered by the monitor right
-    /// after the spawn. Taken by `cancel_build` and by the monitor's
-    /// cancellation path. Its presence is NOT the cancellation signal:
-    /// between steps it legitimately holds the previous step's exited
-    /// child, and before the first registration it is empty.
+    /// Running-log registration of the job that currently owns the build
+    /// slot. LOG ROLE ONLY: the child process is owned LOCALLY by the
+    /// monitor thread that spawned it — nobody but that thread can kill
+    /// or reap it (the old design kept the child here and the
+    /// cancellation paths took and killed whatever sat in this slot,
+    /// whichever job owned it). `id` lets the end-of-build cleanup of an
+    /// old job avoid wiping the registration of a newer one.
     pub build: Mutex<Option<BuildJob>>,
     /// Identity of the running build job. Reserved synchronously by
     /// `start_build` (check-and-claim in one step: no double-start
@@ -24,7 +25,10 @@ pub struct AppState {
     pub last_success: Mutex<Option<bool>>,
 }
 
+/// Running log of the current build job, read by `read_build_log` while
+/// the build is in progress. `id` is the identity that reserved the slot:
+/// only the owning job's cleanup clears the registration.
 pub struct BuildJob {
-    pub child: Child,
+    pub id: u64,
     pub lines: Arc<Mutex<Vec<LogLine>>>,
 }
