@@ -1,5 +1,4 @@
 use serde::Serialize;
-use std::io::Write as _;
 use std::path::{Component, Path, PathBuf};
 
 use crate::error::{AppError, AppResult};
@@ -137,12 +136,10 @@ pub async fn read_file(root: String, path: String) -> AppResult<FileContent> {
 pub async fn write_file(root: String, path: String, content: String) -> AppResult<()> {
     tauri::async_runtime::spawn_blocking(move || {
         let full = resolve_in_root(Path::new(&root), &path)?;
-        if let Some(parent) = full.parent() {
-            std::fs::create_dir_all(parent)?;
-        }
-        let mut f = std::fs::File::create(&full)?;
-        f.write_all(content.as_bytes())?;
-        Ok(())
+        // Atomic replacement (temp file in the same directory + fsync +
+        // rename over the destination): a crash mid-write can no longer
+        // truncate the file, and a failed write leaves the original intact.
+        crate::atomic_io::write_atomic(&full, content.as_bytes())
     })
     .await
     .map_err(|e| AppError(format!("task failed: {e}")))?
