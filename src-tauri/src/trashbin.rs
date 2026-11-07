@@ -20,13 +20,27 @@ pub fn move_to_trash(path: &Path) -> Result<(), String> {
 
 #[cfg(test)]
 mod tests {
+    // Contratto di determinismo CI (M0.6.3): il comportamento del cestino
+    // di sistema è deterministico nei runner CI SOLO su Linux — il cestino
+    // è disponibile di norma e XDG_DATA_HOME ne forza l'indisponibilità
+    // (implementazione freedesktop). Sui runner Windows/macOS headless la
+    // disponibilità del cestino non è garantita: lì questi test sono
+    // compilati fuori e il contratto è verificato dove è deterministico.
+    // Import e lock dell'ambiente seguono lo stesso gate: senza di esso i
+    // test compilati fuori lascerebbero elementi non usati, rompendo
+    // `cargo clippy --all-targets -- -D warnings` sugli altri OS.
+    #[cfg(target_os = "linux")]
     use super::*;
+    #[cfg(target_os = "linux")]
     use std::fs;
+    #[cfg(target_os = "linux")]
     use std::sync::Mutex;
 
-    /// Serializes the tests that touch the process environment.
+    /// Serializza i test che toccano l'ambiente di processo.
+    #[cfg(target_os = "linux")]
     static ENV_LOCK: Mutex<()> = Mutex::new(());
 
+    #[cfg(target_os = "linux")]
     #[test]
     fn delete_moves_file_to_trash_and_off_disk() {
         let dir = tempfile::tempdir().unwrap();
@@ -46,6 +60,7 @@ mod tests {
         );
     }
 
+    #[cfg(target_os = "linux")]
     #[test]
     fn when_trash_is_unavailable_the_item_must_survive() {
         let _guard = ENV_LOCK.lock().unwrap_or_else(|p| p.into_inner());
