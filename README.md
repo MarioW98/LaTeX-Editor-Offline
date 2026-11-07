@@ -93,11 +93,14 @@ senza disinstallare nulla.
   cronologia annulla/rifai, piegatura del codice, ritorno a capo, Ctrl+S,
   salvataggio automatico con ritardo configurabile (1200 ms), multi-cursore e
   selezione rettangolare.
-- **Compilazione**: rilevamento della distribuzione LaTeX, motori
-  pdflatex/xelatex/lualatex, uso di `latexmk` quando disponibile con fallback
-  a pipeline a passate (motore → biber/bibtex → motore → motore), output in
-  `.latex-editor/build`, compilazione cancellabile, log in streaming, errori
-  con file:linea cliccabili.
+- **Compilazione**: rilevamento della distribuzione LaTeX sempre visibile
+  (chip «LaTeX» nella barra di stato, cliccabile per il dettaglio), gate
+  prima di ogni compilazione — senza distribuzione (o senza il motore
+  scelto) la build non parte e si apre la finestra di guida «Impossibile
+  compilare»; motori pdflatex/xelatex/lualatex, uso di `latexmk` quando
+  disponibile con fallback a pipeline a passate (motore → biber/bibtex →
+  motore → motore), output in `.latex-editor/build`, compilazione
+  cancellabile, log in streaming, errori con file:linea cliccabili.
 - **Anteprima PDF** (PDF.js): aggiornata a ogni compilazione, zoom, adatta
   alla larghezza, navigazione pagine, ricarica manuale; in caso di errore
   resta a schermo l'ultimo PDF valido con un avviso.
@@ -112,17 +115,32 @@ senza disinstallare nulla.
 
 ## Requisiti
 
+Per **compilare** serve una **distribuzione LaTeX installata sul computer**
+(MiKTeX o TeX Live): l'editor **non la include** e resta completamente
+offline — nessuna funzionalità scarica nulla, nemmeno i pacchetti LaTeX.
+
+- Windows: [MiKTeX](https://miktex.org) o [TeX Live](https://www.tug.org/texlive/)
+- Linux: `sudo apt install texlive-latex-recommended texlive-latex-extra latexmk`
+  (o la distribuzione della tua distro)
+- macOS: [MacTeX](https://www.tug.org/mactex/) o
+  [TinyTeX](https://yihui.org/tinytex/) (`\usepackage` più comuni: booktabs,
+  babel, hyperref, beamer)
+
+Dopo l'installazione **riavvia l'app**. Lo stato degli strumenti è visibile
+sempre, senza click: il **chip «LaTeX» nella barra di stato** —
+«LaTeX: pronto (latexmk)», «LaTeX: pronto (pdflatex)» (senza latexmk) o
+«LaTeX: assente». Un click sul chip apre il dettaglio: l'elenco
+pdflatex/xelatex/lualatex/latexmk/bibtex/biber con ✓/✗ e versione, il
+pulsante «Rileggi» e, se non c'è nulla, la guida per installare una
+distribuzione. Se compili senza distribuzione (o senza il motore scelto),
+la compilazione non parte affatto: si apre la finestra **«Impossibile
+compilare»** con le stesse indicazioni — mai un errore tecnico grezzo.
+
+Per **sviluppare** servono in più:
+
 - **Node.js ≥ 22** e npm (il repo ha `engines: { node: ">=22" }`: i test
   usano `node --test --experimental-strip-types`, che richiede Node ≥ 22.6)
 - **Rust ≥ 1.77** (https://rustup.rs)
-- Una **distribuzione LaTeX** installata localmente (l'editor non scarica
-  nulla):
-  - Windows: [MiKTeX](https://miktex.org) o [TeX Live](https://www.tug.org/texlive/)
-  - Linux: `sudo apt install texlive-latex-recommended texlive-latex-extra latexmk`
-    (o la distribuzione della tua distro)
-  - macOS: [MacTeX](https://www.tug.org/mactex/) o
-    [TinyTeX](https://yihui.org/tinytex/) (`\usepackage` più comuni: booktabs,
-    babel, hyperref, beamer)
 
 ## Sviluppo
 

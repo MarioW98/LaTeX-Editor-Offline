@@ -86,9 +86,14 @@ Releases (i file hanno gli stessi nomi).
 
 ### 2.2 Prerequisito: una distribuzione LaTeX
 
-L'editor **non include** il compilatore LaTeX: installane uno prima di
-compilare il primo documento. Aprendo l'app, il riquadro «Distribuzione
-LaTeX» nella schermata di benvenuto ti dice cosa è stato rilevato.
+L'editor **non include** il compilatore LaTeX e resta completamente
+offline: installane uno prima di compilare il primo documento. Lo stato
+degli strumenti è visibile SEMPRE, senza click: il **chip «LaTeX» nella
+barra di stato** in basso — «LaTeX: pronto (latexmk)», «LaTeX: pronto
+(pdflatex)» (senza latexmk) o «LaTeX: assente» — e un click sul chip apre
+il dettaglio con l'elenco completo (vedi [4.6](#46-barra-di-stato)).
+Prima di aprire un progetto, lo stesso riquadro «Distribuzione LaTeX»
+compare nella schermata di benvenuto.
 
 | Sistema | Distribuzione consigliata | Dove |
 | --- | --- | --- |
@@ -347,10 +352,16 @@ file con l'explorer di sistema e premere **↻** per aggiornare l'albero.
 
 ### 4.6 Barra di stato
 
-Da sinistra: **pallino** verde («LaTeX pronto (latexmk)»), giallo («LaTeX
-pronto (multi-passaggio)», cioè senza latexmk), rosso («Distribuzione
-LaTeX non rilevata»); esito e durata dell'ultima compilazione; file
-principale e motore in uso; percorso completo del progetto aperto.
+Da sinistra: **chip «LaTeX»** cliccabile — verde «LaTeX: pronto
+(latexmk)», giallo «LaTeX: pronto (<motore>)» quando latexmk manca e la
+compilazione usa la sequenza multi-passaggio, rosso «LaTeX: assente»,
+grigio mentre la rilevazione è in corso. Un click apre il dettaglio:
+l'elenco dei sei strumenti (pdflatex, xelatex, lualatex, latexmk, bibtex,
+biber) con ✓/✗ e versione, il pulsante **Rileggi** e, se non c'è nulla
+con cui compilare, la guida per installare una distribuzione (vedi
+[2.2](#22-prerequisito-una-distribuzione-latex)). Seguono: esito e durata
+dell'ultima compilazione; file principale e motore in uso; percorso
+completo del progetto aperto.
 
 ---
 
@@ -360,17 +371,23 @@ Premi **F5** o il pulsante **Compila**.
 
 Cosa succede:
 
-1. L'editor salva i buffer e lancia la compilazione del **file principale**
-   (vedi [6. Impostazioni](#6-impostazioni)) con il motore scelto.
-2. Se `latexmk` è disponibile viene usato (gestisce da solo le passate
+1. Prima di partire, l'editor controlla che il toolchain ci sia (è il
+   chip della barra di stato, vedi [4.6](#46-barra-di-stato)): senza
+   distribuzione la compilazione **non parte affatto** e si apre la
+   finestra «Impossibile compilare» con le indicazioni per installarne
+   una; se la distribuzione c'è ma il motore scelto manca, la stessa
+   finestra dice quale motore scegliere tra quelli disponibili.
+2. L'editor lancia la compilazione del **file principale** (vedi
+   [6. Impostazioni](#6-impostazioni)) con il motore scelto.
+3. Se `latexmk` è disponibile viene usato (gestisce da solo le passate
    ripetute e la bibliografia). Altrimenti l'editor esegue la propria
    sequenza: motore → `biber`/`bibtex` (se serve, rilevato
    automaticamente) → motore → motore.
-3. Tutti i file intermedi e il PDF finiscono nella cartella **interna**
+4. Tutti i file intermedi e il PDF finiscono nella cartella **interna**
    `.latex-editor/build` del progetto: la tua cartella resta pulita.
-4. Durante l'esecuzione: log in streaming nel pannello output, pulsante
+5. Durante l'esecuzione: log in streaming nel pannello output, pulsante
    **Ferma compilazione** per interrompere.
-5. A fine corsa: esito, durata e (se riuscita) aggiornamento automatico
+6. A fine corsa: esito, durata e (se riuscita) aggiornamento automatico
    dell'anteprima.
 
 Dettagli utili:
@@ -613,8 +630,12 @@ Il flusso, tutto esplicito:
    installare, l'app salva automaticamente tutti i file non ancora salvati
    — non perdi nulla. Su Windows l'app si chiude per installare (è una
    limitazione degli installer) e riapre da sola al termine;
-4. se la rete non risponde, compare un messaggio d'errore esplicito con un
-   pulsante **«Riprova»**: mai errori muti.
+4. se qualcosa non va, compare un messaggio in italiano con un pulsante
+   **«Riprova»**: mai errori muti e mai messaggi tecnici grezzi. Se il
+   canale degli aggiornamenti non è raggiungibile — rete assente o ancora
+   nessun rilascio pubblicato — il messaggio lo dice e suggerisce di
+   riprovare dopo il primo rilascio; per ogni altro problema il dettaglio
+   tecnico resta visibile come riga secondaria, mai in prima riga.
 
 Se non premi mai il pulsante, l'app resta offline per sempre.
 
