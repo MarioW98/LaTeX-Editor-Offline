@@ -48,6 +48,21 @@ jobs:
           # so Node 18/20 cannot run them).
           node-version: 22
 
+      # B0.5.1 — la versione vive in un solo posto: src-tauri/tauri.conf.json.
+      # Lo script sincronizza i file derivati (no-op se già coerenti) e il
+      # git diff finale fallisce se il repository è stato committato fuori
+      # sync: dopo un bump di versione serve `node scripts/sync-version.mjs`
+      # seguito dal commit del risultato.
+      - name: Sync version from tauri.conf.json and verify coherence
+        shell: bash
+        run: |
+          node scripts/sync-version.mjs
+          if ! git diff --quiet -- package.json package-lock.json src-tauri/Cargo.toml src-tauri/Cargo.lock; then
+            echo "::error::I file della versione divergono da src-tauri/tauri.conf.json: esegui 'node scripts/sync-version.mjs' e committa il risultato."
+            git --no-pager diff -- package.json package-lock.json src-tauri/Cargo.toml src-tauri/Cargo.lock
+            exit 1
+          fi
+
       - name: Set up Rust
         uses: dtolnay/rust-toolchain@stable
 
