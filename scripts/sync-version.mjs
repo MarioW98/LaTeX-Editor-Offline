@@ -19,6 +19,12 @@
  * Dopo un bump di versione in tauri.conf.json eseguire lo script e committare
  * tutto insieme: la CI verifica la coerenza e fallisce se i file divergono.
  * Nessuna dipendenza oltre a Node (>= 22), solo moduli standard.
+ *
+ * M0.6.1 — contratto sui fine riga: il checkout di git su Windows
+ * (core.autocrlf) produce file CRLF, quindi OGNI regex di riga qui dentro
+ * tollera un "\r" opzionale prima del fine riga — catturato e riemesso nella
+ * sostituzione, così l'output conserva byte per byte i fine riga di ingresso
+ * e ogni funzione resta idempotente sia su LF sia su CRLF.
  */
 import { readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
@@ -48,13 +54,18 @@ export function extractAppVersion(tauriConfJson) {
   return v;
 }
 
-/** Sostituisce la PRIMA riga `"version": "…"` di un testo JSON. */
+/**
+ * Sostituisce la PRIMA riga `"version": "…"` di un testo JSON.
+ * Il gruppo (\r?) cattura l'eventuale carriage return del fine riga CRLF
+ * e lo riemette dopo la sostituzione: i fine riga del testo di ingresso
+ * restano byte per byte (LF entra, LF esce; CRLF entra, CRLF esce).
+ */
 function replaceFirstVersionJsonLine(text, version) {
-  const re = /^(\s*)"version":\s*"[^"]*"(,?)$/m;
+  const re = /^(\s*)"version":\s*"[^"]*"(,?)(\r?)$/m;
   if (!re.test(text)) {
     throw new Error('nessuna riga "version": "…" trovata');
   }
-  return text.replace(re, `$1"version": "${version}"$2`);
+  return text.replace(re, `$1"version": "${version}"$2$3`);
 }
 
 /** package.json: una sola riga "version", quella della radice. */
@@ -69,7 +80,10 @@ export function syncPackageJsonText(text, version) {
  */
 export function syncPackageLockText(text, version) {
   let out = replaceFirstVersionJsonLine(text, version);
-  const marker = /^\s*"":\s*\{$/m;
+  // Anche il marker del blocco packages[""] tollera il \r di un fine riga
+  // CRLF: serve solo a individuare il punto di divisione, non si sostituisce
+  // nulla, quindi il gruppo (\r?) resta parte del testo matchato.
+  const marker = /^\s*"":\s*\{(\r?)$/m;
   const m = marker.exec(out);
   if (!m) {
     throw new Error('package-lock.json: blocco packages[""] non trovato');
@@ -94,20 +108,26 @@ export function syncCargoTomlText(text, version) {
   const sectionEnd = nextSection === -1 ? text.length : nextSection;
   const head = text.slice(0, sectionEnd);
   const tail = text.slice(sectionEnd);
-  const re = /^version(\s*)=\s*"[^"]*"$/m;
+  // (\r?) cattura e riemette l'eventuale carriage return del fine riga CRLF.
+  const re = /^version(\s*)=\s*"[^"]*"(\r?)$/m;
   if (!re.test(head)) {
     throw new Error('Cargo.toml: manca "version = …" nella sezione [package]');
   }
-  return head.replace(re, `version$1= "${version}"`) + tail;
+  return head.replace(re, `version$1= "${version}"$2`) + tail;
 }
 
 /**
  * src-tauri/Cargo.lock: SOLO il campo version del blocco [[package]] di
  * latex-editor-offline. Ogni altra crate nel lock ha la propria versione.
+ * I separatori tra le righe sono \r?\n (LF o CRLF): il gruppo 1 cattura i
+ * separatori così come sono e li riemette byte per byte. È l'unica regex
+ * di questo script con separatori LETTERALI tra le righe: su un checkout
+ * Windows (CRLF) senza \r? non matcha affatto — è il punto esatto che
+ * rendeva rosso lo step CI di sync della versione.
  */
 export function syncCargoLockText(text, version, packageName = "latex-editor-offline") {
   const re = new RegExp(
-    `(\\[\\[package\\]\\]\nname = ${JSON.stringify(packageName)}\nversion = )"[^"]*"`,
+    `(\\[\\[package\\]\\]\r?\nname = ${JSON.stringify(packageName)}\r?\nversion = )"[^"]*"`,
   );
   if (!re.test(text)) {
     throw new Error(`Cargo.lock: blocco [[package]] ${packageName} non trovato`);
