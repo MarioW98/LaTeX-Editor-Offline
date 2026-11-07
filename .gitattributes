@@ -1,0 +1,8 @@
+# Fine riga canonici nel repository: git normalizza a LF tutto ciò che
+# riconosce come testo al momento del commit, su qualunque sistema operativo
+# di chi contribuisce. I binari (icone .ico/.icns/.png, .pdf, .deb, …) non
+# vengono toccati: git li classifica binari e li conserva byte per byte.
+# La robustezza al contenuto del WORKTREE (CRLF su Windows con
+# core.autocrlf) è responsabilità degli strumenti che leggono i file:
+# scripts/sync-version.mjs tollera entrambi i fine riga (M0.6.1).
+* text=auto
