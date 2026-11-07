@@ -10,6 +10,12 @@ import {
   type ProjectSettings,
 } from "../types.ts";
 import { TEMPLATES } from "../features/templates.ts";
+import {
+  describeError,
+  realUpdaterPort,
+  type CheckedUpdate,
+  type UpdaterPort,
+} from "../updater/updaterService.ts";
 
 interface OpenTab {
   path: string;
@@ -20,6 +26,22 @@ interface PendingJump {
   line: number;
   nonce: number;
 }
+
+/**
+ * Macchina a stati dell'aggiornamento (MU.3):
+ *   idle → checking → available{versione, note} | up-to-date | error{messaggio}
+ *   available → downloading{progress} → ready → (riavvio)
+ * Gli errori di rete finiscono SEMPRE in `error` con un messaggio visibile:
+ * mai silenzio. Nessuna transizione parte da sola: solo click dell'utente.
+ */
+export type UpdateUiState =
+  | { phase: "idle" }
+  | { phase: "checking" }
+  | { phase: "up-to-date" }
+  | { phase: "available"; version: string; notes: string | null }
+  | { phase: "downloading"; version: string; received: number; total: number | null }
+  | { phase: "ready"; version: string }
+  | { phase: "error"; message: string };
 
 export interface StoreState {
   rootPath: string | null;
@@ -44,6 +66,17 @@ export interface StoreState {
   settingsOpen: boolean;
   welcomeAction: "none" | "template";
   selectedTemplateId: string;
+
+  /** Sezione aggiornamenti (MU.3) — vedi UpdateUiState. */
+  update: UpdateUiState;
+  /** Porta updater iniettabile nei test (default: adapter reale). */
+  updaterPort: UpdaterPort;
+  checkForUpdates: () => Promise<void>;
+  downloadUpdate: () => Promise<void>;
+  installUpdate: () => Promise<void>;
+  resetUpdateUi: () => void;
+  /** Salva su disco TUTTI i buffer sporchi (usata prima di installare). */
+  saveAllDirty: () => Promise<void>;
 
   bootstrap: () => Promise<void>;
   setRoot: (root: string | null) => Promise<void>;
@@ -97,6 +130,9 @@ export function clearPendingAutosave(path: string) {
   autosaveTimers.delete(path);
 }
 
+/** Handle dell'aggiornamento trovato dall'ultimo check (non è stato UI). */
+let updateHandle: CheckedUpdate | null = null;
+
 function relToRoot(file: string, root: string): string | null {
   let f = file.replace(/\\/g, "/");
   const r = root.replace(/\\/g, "/").replace(/\/+$/, "");
@@ -130,6 +166,9 @@ export const useStore = create<StoreState>()((set, get) => ({
   settingsOpen: false,
   welcomeAction: "none",
   selectedTemplateId: "article",
+
+  update: { phase: "idle" },
+  updaterPort: realUpdaterPort,
 
   bootstrap: async () => {
     get().detectLatex();
@@ -464,4 +503,116 @@ export const useStore = create<StoreState>()((set, get) => ({
   setSettingsOpen: (open) => set({ settingsOpen: open }),
   setWelcomeAction: (a) => set({ welcomeAction: a }),
   setSelectedTemplateId: (id) => set({ selectedTemplateId: id }),
+
+  // ---- aggiornamenti (MU.3): tutto parte da un click, mai da sola ----
+
+  checkForUpdates: async () => {
+    const phase = get().update.phase;
+    if (phase === "checking" || phase === "downloading") return;
+    set({ update: { phase: "checking" } });
+    try {
+      const found = await get().updaterPort.check();
+      updateHandle = found;
+      if (!found) {
+        set({ update: { phase: "up-to-date" } });
+      } else {
+        set({
+          update: {
+            phase: "available",
+            version: found.version,
+            notes: found.notes,
+          },
+        });
+      }
+    } catch (e) {
+      set({
+        update: {
+          phase: "error",
+          message: `controllo aggiornamenti non riuscito: ${describeError(e)}`,
+        },
+      });
+    }
+  },
+
+  downloadUpdate: async () => {
+    const st = get().update;
+    if (st.phase !== "available" || !updateHandle) return;
+    const version = st.version;
+    set({ update: { phase: "downloading", version, received: 0, total: null } });
+    try {
+      await updateHandle.download((p) => {
+        set((s) =>
+          s.update.phase === "downloading"
+            ? {
+                update: {
+                  phase: "downloading",
+                  version,
+                  received: p.received,
+                  total: p.total,
+                },
+              }
+            : {},
+        );
+      });
+      set({ update: { phase: "ready", version } });
+    } catch (e) {
+      set({
+        update: {
+          phase: "error",
+          message: `scaricamento aggiornamento non riuscito: ${describeError(e)}`,
+        },
+      });
+    }
+  },
+
+  installUpdate: async () => {
+    const st = get().update;
+    if (st.phase !== "ready" || !updateHandle) return;
+    // Su Windows l'installer chiude l'app appena parte l'installazione:
+    // PRIMA di installare si salvano su disco TUTTI i buffer sporchi,
+    // l'aggiornamento non deve mai costare dati non salvati. Se anche un
+    // solo file resta sporco l'installazione NON parte.
+    await get().saveAllDirty();
+    const stillDirty = Object.keys(get().dirty).filter((p) => get().dirty[p]);
+    if (stillDirty.length > 0) {
+      set({
+        update: {
+          phase: "error",
+          message: `impossibile salvare ${stillDirty.length} file prima dell'installazione (${stillDirty.join(", ")}): aggiornamento non installato`,
+        },
+      });
+      return;
+    }
+    try {
+      await updateHandle.install();
+      await get().updaterPort.relaunch();
+    } catch (e) {
+      set({
+        update: {
+          phase: "error",
+          message: `installazione aggiornamento non riuscita: ${describeError(e)}`,
+        },
+      });
+    }
+  },
+
+  resetUpdateUi: () => {
+    updateHandle = null;
+    set({ update: { phase: "idle" } });
+  },
+
+  saveAllDirty: async () => {
+    const { rootPath, dirty, buffers, binaryPaths } = get();
+    if (!rootPath) return;
+    for (const path of Object.keys(dirty)) {
+      if (!dirty[path]) continue;
+      // I file non modificabili non si toccano mai; i buffer assenti nemmeno.
+      if (binaryPaths[path]) continue;
+      if (buffers[path] === undefined) continue;
+      // Il timer di autosave pendente va cancellato: la sua scrittura in
+      // differita arriverebbe dopo l'uscita dell'app.
+      clearPendingAutosave(path);
+      await get().saveFile(path);
+    }
+  },
 }));
