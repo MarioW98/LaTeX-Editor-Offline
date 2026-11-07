@@ -5,7 +5,12 @@ name: Build installers
 # Every successful build PUBLISHES the installers on the public GitHub
 # Releases page, where anyone can download them without logging in:
 #   - push to main     -> rolling "latest" release, updated at every push
-#   - push of tag v*   -> versioned release (e.g. v0.1.0)
+#   - push of tag v*   -> versioned release (e.g. v0.1.0) that ALSO carries
+#                         the signed updater artifacts (.sig files, macOS
+#                         .app.tar.gz) and latest.json, the index the app
+#                         downloads ONLY when the user asks for updates
+#                         (releases/latest skips prereleases, so updates
+#                         come from v* tags only, never from main).
 # Windows produces exactly ONE installer: the .msi. Published assets use
 # stable file names (no version numbers) so the README can link them
 # directly: https://github.com/<repo>/releases/download/latest/<asset>.
@@ -72,6 +77,15 @@ jobs:
             exit 1
           fi
 
+      # MU.2 — la configurazione updater dev'essere completa PRIMA di
+      # buildare, formato della pubkey minisign incluso: con il segnaposto
+      # REPLACE_WITH_MAINTAINER_PUBKEY il job FALLISCE di proposito (meglio
+      # rosso in CI che un updater che non verifica le firme a casa
+      # dell'utente).
+      - name: Validate updater config (pubkey minisign)
+        shell: bash
+        run: node scripts/check-updater-config.mjs
+
       - name: Set up Rust
         uses: dtolnay/rust-toolchain@stable
 
@@ -112,6 +126,32 @@ jobs:
       - name: Frontend tests
         run: npm test
 
+      # MU.2 — mai buildare artifact updater senza chiave di firma:
+      # createUpdaterArtifacts è attivo e la firma avviene durante
+      # `npm run tauri build`, quindi i secret vanno esportati PRIMA.
+      # Se la chiave manca il job FALLISCE con messaggio esplicito (una
+      # password vuota è legittima per chiavi minisign senza password).
+      - name: Export updater signing secrets (fail if missing)
+        shell: bash
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: |
+          if [ -z "$TAURI_SIGNING_PRIVATE_KEY" ]; then
+            echo "::error::TAURI_SIGNING_PRIVATE_KEY non è configurato: senza chiave di firma non si possono produrre artifact updater firmati, e artifact non firmati non si pubblicano MAI."
+            exit 1
+          fi
+          {
+            echo "TAURI_SIGNING_PRIVATE_KEY<<TAURI_SIGNING_EOF"
+            echo "$TAURI_SIGNING_PRIVATE_KEY"
+            echo "TAURI_SIGNING_EOF"
+          } >> "$GITHUB_ENV"
+          {
+            echo "TAURI_SIGNING_PRIVATE_KEY_PASSWORD<<TAURI_SIGNING_PASSWORD_EOF"
+            echo "$TAURI_SIGNING_PRIVATE_KEY_PASSWORD"
+            echo "TAURI_SIGNING_PASSWORD_EOF"
+          } >> "$GITHUB_ENV"
+
       - name: Build app bundles
         run: npm run tauri build -- --bundles ${{ matrix.target-bundles }}
 
@@ -121,6 +161,27 @@ jobs:
           echo "Bundle output:"
           ls -R src-tauri/target/release/bundle || true
           test -d src-tauri/target/release/bundle
+
+      # MU.2 — gli artifact updater firmati devono esserci TUTTI per ogni
+      # piattaforma della matrice: se un .sig manca il job FALLISCE (meglio
+      # rosso che un updater che dà errore a casa dell'utente).
+      - name: Verify signed updater artifacts exist
+        shell: bash
+        run: |
+          case "${{ matrix.os }}" in
+            windows-latest)
+              test -n "$(ls src-tauri/target/release/bundle/msi/*.msi.sig 2>/dev/null)"
+              ;;
+            ubuntu-22.04)
+              test -n "$(ls src-tauri/target/release/bundle/appimage/*.AppImage.sig 2>/dev/null)"
+              ;;
+            macos-latest)
+              test -n "$(ls src-tauri/target/release/bundle/macos/*.app.tar.gz 2>/dev/null)"
+              test -n "$(ls src-tauri/target/release/bundle/macos/*.app.tar.gz.sig 2>/dev/null)"
+              ;;
+          esac
+          echo "Firme updater generate:"
+          ls -l src-tauri/target/release/bundle/*/*.sig
 
       # B0.5.2 — binario release NON installato come artefatto separato: chi
       # vuole provare l'app scarica l'artefatto dalla scheda Actions e lo
@@ -157,16 +218,20 @@ jobs:
           if-no-files-found: error
           path: portable-stage/*
 
-      - name: Upload installers (workflow artifacts)
+      - name: Upload installers and signed updater artifacts (workflow artifacts)
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.artifact-name }}
           if-no-files-found: error
           path: |
             src-tauri/target/release/bundle/msi/*.msi
+            src-tauri/target/release/bundle/msi/*.msi.sig
             src-tauri/target/release/bundle/deb/*.deb
             src-tauri/target/release/bundle/appimage/*.AppImage
+            src-tauri/target/release/bundle/appimage/*.AppImage.sig
             src-tauri/target/release/bundle/dmg/*.dmg
+            src-tauri/target/release/bundle/macos/*.app.tar.gz
+            src-tauri/target/release/bundle/macos/*.app.tar.gz.sig
 
   release:
     name: Publish installers to GitHub Releases
@@ -178,6 +243,19 @@ jobs:
       group: publish-release
       cancel-in-progress: true
     steps:
+      # MU.2 — sul rilascio versionato servono gli script di generazione di
+      # latest.json: checkout e Node PRIMA del download degli artifact
+      # (il checkout ripulisce il workspace e cancellerebbe i file scaricati).
+      - name: Checkout repository (release scripts)
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js (release scripts)
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
       - name: Download all built installers
         uses: actions/download-artifact@v4
         with:
@@ -185,9 +263,20 @@ jobs:
           merge-multiple: true
 
       - name: Collect installer files (stable names)
+        shell: bash
         run: |
           mkdir -p assets
-          find dist -type f \( -name '*.msi' -o -name '*.deb' -o -name '*.AppImage' -o -name '*.dmg' \) -exec cp {} assets/ \;
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            # MU.2 — rilascio versionato: anche gli artifact updater firmati
+            # (.sig) e l'app macOS .app.tar.gz (l'updater NON usa il .dmg).
+            find dist -type f \
+              \( -name '*.msi' -o -name '*.msi.sig' -o -name '*.deb' \
+              -o -name '*.AppImage' -o -name '*.AppImage.sig' -o -name '*.dmg' \
+              -o -name '*.app.tar.gz' -o -name '*.app.tar.gz.sig' \) -exec cp {} assets/ \;
+          else
+            find dist -type f \
+              \( -name '*.msi' -o -name '*.deb' -o -name '*.AppImage' -o -name '*.dmg' \) -exec cp {} assets/ \;
+          fi
           cd assets
           # Publish under stable names (no version numbers) so the README and
           # the manual can link each file directly and the link never breaks
@@ -203,10 +292,74 @@ jobs:
               *)         mv "$f" LaTeX-Editor-Offline-macos.dmg ;;
             esac
           done
+          # MU.2 — anche firme e artifact updater, affiancati ai rispettivi
+          # file con nomi stabili.
+          for f in *.msi.sig; do [ -e "$f" ] && mv "$f" LaTeX-Editor-Offline-windows-x64.msi.sig; done
+          for f in *.AppImage.sig; do [ -e "$f" ] && mv "$f" LaTeX-Editor-Offline-linux-amd64.AppImage.sig; done
+          for f in *.app.tar.gz; do
+            [ -e "$f" ] || continue
+            case "$f" in
+              *aarch64*) mv "$f" LaTeX-Editor-Offline-macos-aarch64.app.tar.gz ;;
+              *x86_64*)  mv "$f" LaTeX-Editor-Offline-macos-x64.app.tar.gz ;;
+              *)         mv "$f" LaTeX-Editor-Offline-macos.app.tar.gz ;;
+            esac
+          done
+          for f in *.app.tar.gz.sig; do
+            [ -e "$f" ] || continue
+            case "$f" in
+              *aarch64*) mv "$f" LaTeX-Editor-Offline-macos-aarch64.app.tar.gz.sig ;;
+              *x86_64*)  mv "$f" LaTeX-Editor-Offline-macos-x64.app.tar.gz.sig ;;
+              *)         mv "$f" LaTeX-Editor-Offline-macos.app.tar.gz.sig ;;
+            esac
+          done
           cd ..
           echo "Files to publish:"
           ls -l assets
           test -n "$(ls -A assets)"
+          # MU.2 — completezza degli asset updater nel rilascio versionato:
+          # se manca una piattaforma o una firma il job FALLISCE subito.
+          # (La matrice compila macOS solo su Apple Silicon: se un domani
+          # cambia, aggiornare questo elenco e UPDATER_PLATFORMS.)
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            for f in \
+              LaTeX-Editor-Offline-windows-x64.msi \
+              LaTeX-Editor-Offline-windows-x64.msi.sig \
+              LaTeX-Editor-Offline-linux-amd64.AppImage \
+              LaTeX-Editor-Offline-linux-amd64.AppImage.sig \
+              LaTeX-Editor-Offline-macos-aarch64.app.tar.gz \
+              LaTeX-Editor-Offline-macos-aarch64.app.tar.gz.sig
+            do
+              test -f "assets/$f" || { echo "::error::Asset updater mancante nel rilascio: $f"; exit 1; }
+            done
+          fi
+
+      - name: Extract release notes from the tag
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: bash
+        run: |
+          git fetch --force origin "refs/tags/${GITHUB_REF_NAME}:refs/tags/${GITHUB_REF_NAME}" || true
+          git for-each-ref "refs/tags/${GITHUB_REF_NAME}" --format='%(contents:body)' > tag-notes.txt
+          # Tag leggero o senza messaggio: titolo di default, mai un campo vuoto.
+          if [ ! -s tag-notes.txt ]; then
+            printf 'Rilascio %s' "$GITHUB_REF_NAME" > tag-notes.txt
+          fi
+
+      # MU.2 — latest.json per l'updater: la generazione stessa VALIDA (se
+      # una piattaforma manca, o una firma manca/è vuota, o il tag non è
+      # semver, il job FALLISCE) e il --check riverifica il file scritto.
+      - name: Generate and validate latest.json
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: bash
+        run: |
+          node scripts/make-latest.mjs \
+            --repo "$GITHUB_REPOSITORY" \
+            --tag "$GITHUB_REF_NAME" \
+            --assets-dir assets \
+            --notes-file tag-notes.txt \
+            --out assets/latest.json
+          node scripts/make-latest.mjs --check assets/latest.json
+          echo "latest.json da pubblicare:"
+          cat assets/latest.json
 
       - name: Prepare release notes
         if: github.ref == 'refs/heads/main'
