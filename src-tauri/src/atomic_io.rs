@@ -40,6 +40,7 @@ pub fn write_atomic(path: &Path, content: &[u8]) -> std::io::Result<()> {
 mod tests {
     use super::*;
     use std::fs;
+    #[cfg(unix)]
     use std::io::Read;
 
     #[test]
