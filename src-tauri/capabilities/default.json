@@ -4,6 +4,8 @@
   "description": "Default capability for the main window of the offline LaTeX editor",
   "windows": ["main"],
   "permissions": [
-    "core:default"
+    "core:default",
+    "updater:default",
+    "process:allow-restart"
   ]
 }

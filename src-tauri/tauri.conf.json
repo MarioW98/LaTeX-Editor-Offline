@@ -28,6 +28,7 @@
   "bundle": {
     "active": true,
     "targets": ["msi", "deb", "appimage", "dmg"],
+    "createUpdaterArtifacts": true,
     "category": "DeveloperTool",
     "shortDescription": "Offline-first LaTeX editor",
     "longDescription": "A fully offline LaTeX desktop editor: project files stay on your disk, compilation runs locally, no account and no network access.",
@@ -44,5 +45,13 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ]
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "REPLACE_WITH_MAINTAINER_PUBKEY",
+      "endpoints": [
+        "https://github.com/MarioW98/LaTeX-Editor-Offline/releases/latest/download/latest.json"
+      ]
+    }
   }
 }
