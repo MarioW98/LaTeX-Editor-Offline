@@ -43,6 +43,45 @@ export function describeError(e: unknown): string {
   return String(e);
 }
 
+/** In quale fase dell'aggiornamento è fallita l'operazione. */
+export type UpdaterErrorContext = "check" | "download" | "install";
+
+/** Messaggio per la UI: titolo azionabile + dettaglio tecnico secondario. */
+export interface UpdaterErrorMessage {
+  title: string;
+  detail: string | null;
+}
+
+const CONTEXT_TITLES: Record<UpdaterErrorContext, string> = {
+  check: "Controllo aggiornamenti non riuscito",
+  download: "Scaricamento dell'aggiornamento non riuscito",
+  install: "Installazione dell'aggiornamento non riuscita",
+};
+
+/**
+ * M0.7.2 — NESSUNA stringa grezza del plugin arriva all'utente:
+ * - il caso specifico del canale non raggiungibile (rete assente o ancora
+ *   nessun rilascio pubblicato: l'endpoint del canale restituisce 404 finché
+ *   non esiste il primo tag v*) ha il messaggio italiano deciso;
+ * - tutto il resto va nel fallback generico: titolo della fase fallita e
+ *   dettaglio tecnico come riga secondaria (mai perso, mai in prima riga).
+ */
+export function mapUpdaterError(
+  e: unknown,
+  context: UpdaterErrorContext,
+): UpdaterErrorMessage {
+  const raw = describeError(e);
+  if (/could not fetch a valid release json/i.test(raw)) {
+    return {
+      title:
+        "Impossibile contattare il canale degli aggiornamenti: verifica la " +
+        "connessione o riprova dopo il primo rilascio.",
+      detail: null,
+    };
+  }
+  return { title: CONTEXT_TITLES[context], detail: raw };
+}
+
 /**
  * Adapter reale, sopra i plugin JS di Tauri.
  *

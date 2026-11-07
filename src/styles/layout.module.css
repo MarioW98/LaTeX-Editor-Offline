@@ -337,3 +337,163 @@
   direction: rtl;
   text-align: left;
 }
+
+/* ---- chip LaTeX nella barra di stato (M0.7.1) ---- */
+
+.latexChipWrap {
+  position: relative;
+  display: inline-flex;
+  flex: 0 0 auto;
+}
+
+.latexChip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 1px 8px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.latexChip:hover {
+  border-color: var(--muted);
+}
+
+.latexChipOk {
+  border-color: var(--green);
+}
+
+.latexChipWarn {
+  border-color: var(--yellow);
+}
+
+.latexChipBad {
+  border-color: var(--red);
+}
+
+.latexChipIdle {
+  border-color: var(--border);
+}
+
+.dotIdle {
+  background: var(--muted);
+}
+
+.latexDetail {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 0;
+  z-index: 60;
+  min-width: 320px;
+  max-width: 420px;
+  padding: 10px 12px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+  font-size: 12.5px;
+}
+
+.latexDetailHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 6px;
+}
+
+.latexCloseBtn {
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 11.5px;
+  cursor: pointer;
+  padding: 2px 4px;
+}
+
+.latexCloseBtn:hover {
+  color: inherit;
+}
+
+.latexToolList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.latexToolRow {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.latexToolRow > span:nth-child(2) {
+  min-width: 72px;
+}
+
+.latexToolOk {
+  color: var(--green);
+}
+
+.latexToolBad {
+  color: var(--red);
+}
+
+.latexToolVersion {
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 240px;
+}
+
+.latexGuidance {
+  margin: 8px 0 0;
+  padding: 8px;
+  border: 1px dashed var(--border);
+  border-radius: 6px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.latexDetailActions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 8px;
+}
+
+/* ---- dialog di guida del gate compilazione (M0.7.1) ---- */
+
+.dialogBody {
+  margin: 4px 0 0;
+  line-height: 1.55;
+  font-size: 13.5px;
+  white-space: pre-line;
+}
+
+/* ---- dettaglio tecnico secondario degli errori updater (M0.7.2) ---- */
+
+.updateMessageCol {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.updateMessageDetail {
+  color: var(--muted);
+  font-size: 11.5px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

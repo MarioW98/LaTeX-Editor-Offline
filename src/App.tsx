@@ -3,6 +3,7 @@ import { listen } from "@tauri-apps/api/event";
 import { useStore } from "./state/store";
 import { TopBar } from "./components/TopBar";
 import { StatusBar } from "./components/StatusBar";
+import { BuildStartDialog } from "./components/BuildStartDialog";
 import { Welcome } from "./components/Welcome";
 import { SettingsDialog } from "./components/SettingsDialog";
 import { FileTree } from "./filetree/FileTree";
@@ -73,6 +74,7 @@ export default function App() {
       {outputOpen && <OutputPanel />}
       <StatusBar />
       <SettingsDialog />
+      <BuildStartDialog />
     </div>
   );
 }

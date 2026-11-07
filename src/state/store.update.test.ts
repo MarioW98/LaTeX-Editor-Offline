@@ -168,6 +168,8 @@ test("check senza aggiornamenti disponibili → up-to-date", async () => {
 });
 
 // (c) — errore di rete: stato error con messaggio esplicito, mai crash.
+// M0.7.2: il messaggio è il titolo italiano della fase fallita; il dettaglio
+// tecnico del plugin resta come riga SECONDARIA (update.detail).
 test("errore di rete in check e in download → stato error col messaggio, store vivo", async () => {
   const calls: string[] = [];
   resetUpdateState();
@@ -184,12 +186,17 @@ test("errore di rete in check e in download → stato error col messaggio, store
   const st = useStore.getState().update;
   assert.equal(st.phase, "error");
   assert.ok(
-    st.phase === "error" && st.message.includes("rete non raggiungibile"),
-    `messaggio di rete mancante: ${JSON.stringify(st)}`,
+    st.phase === "error" && st.message.includes("Controllo aggiornamenti non riuscito"),
+    "il messaggio non spiega quale fase è fallita",
   );
   assert.ok(
-    st.phase === "error" && st.message.includes("controllo aggiornamenti non riuscito"),
-    "il messaggio non spiega quale fase è fallita",
+    st.phase === "error" && (st.detail ?? "").includes("rete non raggiungibile"),
+    `il dettaglio tecnico è andato perso: ${JSON.stringify(st)}`,
+  );
+  // La prima riga resta il messaggio italiano, NON la stringa grezza.
+  assert.ok(
+    st.phase === "error" && !st.message.includes("rete non raggiungibile"),
+    "la stringa grezza del plugin è finita in prima riga",
   );
 
   // Lo store resta perfettamente utilizzabile: si può riprovare subito.
@@ -211,8 +218,13 @@ test("errore di rete in check e in download → stato error col messaggio, store
   const st2 = useStore.getState().update;
   assert.equal(st2.phase, "error");
   assert.ok(
-    st2.phase === "error" && st2.message.includes("connessione caduta"),
-    `messaggio del download fallito mancante: ${JSON.stringify(st2)}`,
+    st2.phase === "error" &&
+      st2.message.includes("Scaricamento dell'aggiornamento non riuscito"),
+    `il messaggio non spiega quale fase è fallita: ${JSON.stringify(st2)}`,
+  );
+  assert.ok(
+    st2.phase === "error" && (st2.detail ?? "").includes("connessione caduta"),
+    `il dettaglio tecnico del download fallito è andato perso: ${JSON.stringify(st2)}`,
   );
 });
 

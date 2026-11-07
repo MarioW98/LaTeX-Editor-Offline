@@ -10,8 +10,9 @@ import {
   type ProjectSettings,
 } from "../types.ts";
 import { TEMPLATES } from "../features/templates.ts";
+import { describeBuildStartError } from "../latex/latexStatusUi.ts";
 import {
-  describeError,
+  mapUpdaterError,
   realUpdaterPort,
   type CheckedUpdate,
   type UpdaterPort,
@@ -33,6 +34,9 @@ interface PendingJump {
  *   available → downloading{progress} → ready → (riavvio)
  * Gli errori di rete finiscono SEMPRE in `error` con un messaggio visibile:
  * mai silenzio. Nessuna transizione parte da sola: solo click dell'utente.
+ * M0.7.2: il messaggio è il titolo italiano azionabile (mapUpdaterError);
+ * il dettaglio tecnico del plugin resta come riga SECONDARIA (`detail`),
+ * mai come prima riga e mai grezzo.
  */
 export type UpdateUiState =
   | { phase: "idle" }
@@ -41,7 +45,7 @@ export type UpdateUiState =
   | { phase: "available"; version: string; notes: string | null }
   | { phase: "downloading"; version: string; received: number; total: number | null }
   | { phase: "ready"; version: string }
-  | { phase: "error"; message: string };
+  | { phase: "error"; message: string; detail: string | null };
 
 export interface StoreState {
   rootPath: string | null;
@@ -57,6 +61,10 @@ export interface StoreState {
   latex: LatexStatus | null;
   buildRunning: boolean;
   buildLog: LogLine[];
+  /** Dialog di guida aperto da build() quando start_build è respinto dal
+   * gate del toolchain (M0.7.1): titolo e corpo del messaggio azionabile. */
+  buildDialog: { title: string; body: string } | null;
+  closeBuildDialog: () => void;
   lastBuildSuccess: boolean | null;
   lastBuildDurationMs: number | null;
   pdfVersion: number;
@@ -157,6 +165,7 @@ export const useStore = create<StoreState>()((set, get) => ({
   latex: null,
   buildRunning: false,
   buildLog: [],
+  buildDialog: null,
   lastBuildSuccess: null,
   lastBuildDurationMs: null,
   pdfVersion: 0,
@@ -462,15 +471,25 @@ export const useStore = create<StoreState>()((set, get) => ({
       await api.startBuild(rootPath, settings.mainFile, settings.engine, settings.shellEscape);
     } catch (e) {
       set({ buildRunning: false });
-      get().appendLog({
-        tsMs: Date.now(),
-        kind: "error",
-        file: null,
-        line: null,
-        text: `avvio compilazione fallito: ${String(e)}`,
-      });
+      // M0.7.1 — l'esito tipizzato del gate backend (distribuzione assente
+      // o motore mancante) apre il DIALOG di guida; ogni altro errore resta
+      // una riga di log, come ha sempre fatto l'app.
+      const described = describeBuildStartError(e);
+      if (described.kind === "toolchain") {
+        set({ buildDialog: { title: described.title, body: described.body } });
+      } else {
+        get().appendLog({
+          tsMs: Date.now(),
+          kind: "error",
+          file: null,
+          line: null,
+          text: described.text,
+        });
+      }
     }
   },
+
+  closeBuildDialog: () => set({ buildDialog: null }),
 
   cancelBuild: async () => {
     try {
@@ -525,12 +544,8 @@ export const useStore = create<StoreState>()((set, get) => ({
         });
       }
     } catch (e) {
-      set({
-        update: {
-          phase: "error",
-          message: `controllo aggiornamenti non riuscito: ${describeError(e)}`,
-        },
-      });
+      const m = mapUpdaterError(e, "check");
+      set({ update: { phase: "error", message: m.title, detail: m.detail } });
     }
   },
 
@@ -556,12 +571,8 @@ export const useStore = create<StoreState>()((set, get) => ({
       });
       set({ update: { phase: "ready", version } });
     } catch (e) {
-      set({
-        update: {
-          phase: "error",
-          message: `scaricamento aggiornamento non riuscito: ${describeError(e)}`,
-        },
-      });
+      const m = mapUpdaterError(e, "download");
+      set({ update: { phase: "error", message: m.title, detail: m.detail } });
     }
   },
 
@@ -579,6 +590,7 @@ export const useStore = create<StoreState>()((set, get) => ({
         update: {
           phase: "error",
           message: `impossibile salvare ${stillDirty.length} file prima dell'installazione (${stillDirty.join(", ")}): aggiornamento non installato`,
+          detail: null,
         },
       });
       return;
@@ -587,12 +599,8 @@ export const useStore = create<StoreState>()((set, get) => ({
       await updateHandle.install();
       await get().updaterPort.relaunch();
     } catch (e) {
-      set({
-        update: {
-          phase: "error",
-          message: `installazione aggiornamento non riuscita: ${describeError(e)}`,
-        },
-      });
+      const m = mapUpdaterError(e, "install");
+      set({ update: { phase: "error", message: m.title, detail: m.detail } });
     }
   },
 

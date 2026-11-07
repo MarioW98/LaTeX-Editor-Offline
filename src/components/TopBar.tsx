@@ -197,7 +197,14 @@ function UpdateStrip({ update }: { update: UpdateUiState }) {
   if (update.phase === "error") {
     return (
       <div className={`${styles.updateBar} ${styles.updateBarError}`} data-testid="update-bar">
-        <span className={styles.updateMessage}>{update.message}</span>
+        <div className={styles.updateMessageCol}>
+          <span className={styles.updateMessage}>{update.message}</span>
+          {update.detail && (
+            <span className={styles.updateMessageDetail} title={update.detail}>
+              {update.detail}
+            </span>
+          )}
+        </div>
         <button className={styles.btn} onClick={() => run.checkForUpdates()}>
           Riprova
         </button>
