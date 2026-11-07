@@ -10,6 +10,9 @@ name: Build installers
 # stable file names (no version numbers) so the README can link them
 # directly: https://github.com/<repo>/releases/download/latest/<asset>.
 # The files are also kept as workflow artifacts (Actions tab, login needed).
+# Every matrix job additionally uploads the NOT-installed release binary
+# as a separate portable workflow artifact (latex-editor-portable-*):
+# download, run, zero installation — the installed version stays intact.
 
 on:
   push:
@@ -29,12 +32,18 @@ jobs:
           - os: windows-latest
             target-bundles: "msi"
             artifact-name: latex-editor-windows
+            portable-name: latex-editor-portable-windows
           - os: ubuntu-22.04
             target-bundles: "deb,appimage"
             artifact-name: latex-editor-linux
+            portable-name: latex-editor-portable-linux
           - os: macos-latest
-            target-bundles: "dmg"
+            # "app" esplicito: garantisce il .app in bundle/macos sia per
+            # l'artefatto portatile (zippato con ditto) sia per l'updater
+            # (.app.tar.gz firmato, aggiunto in MU.1/MU.2).
+            target-bundles: "app,dmg"
             artifact-name: latex-editor-macos
+            portable-name: latex-editor-portable-macos
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -112,6 +121,41 @@ jobs:
           echo "Bundle output:"
           ls -R src-tauri/target/release/bundle || true
           test -d src-tauri/target/release/bundle
+
+      # B0.5.2 — binario release NON installato come artefatto separato: chi
+      # vuole provare l'app scarica l'artefatto dalla scheda Actions e lo
+      # esegue direttamente, senza installazione e senza toccare l'eventuale
+      # versione già installata. I test/ls qui sotto falliscono se il file
+      # manca: meglio rosso che un artefatto portatile vuoto.
+      - name: Stage and verify portable binaries
+        shell: bash
+        run: |
+          mkdir -p portable-stage
+          case "${{ matrix.os }}" in
+            windows-latest)
+              test -f src-tauri/target/release/latex-editor-offline.exe
+              cp src-tauri/target/release/latex-editor-offline.exe portable-stage/
+              ;;
+            ubuntu-22.04)
+              test -f src-tauri/target/release/latex-editor-offline
+              cp src-tauri/target/release/latex-editor-offline portable-stage/
+              ;;
+            macos-latest)
+              test -d "src-tauri/target/release/bundle/macos/LaTeX Editor Offline.app"
+              ditto -c -k --seal-src --keepParent \
+                "src-tauri/target/release/bundle/macos/LaTeX Editor Offline.app" \
+                portable-stage/LaTeX-Editor-Offline-macos-portable.zip
+              ;;
+          esac
+          echo "Portable artifact content:"
+          ls -l portable-stage
+
+      - name: Upload portable binaries (workflow artifacts)
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.portable-name }}
+          if-no-files-found: error
+          path: portable-stage/*
 
       - name: Upload installers (workflow artifacts)
         uses: actions/upload-artifact@v4

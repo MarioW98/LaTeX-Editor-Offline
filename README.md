@@ -160,6 +160,15 @@ con **nomi fissi** (link diretti nel README, sopra):
 I file restano disponibili anche come artefatti della singola run nella
 scheda *Actions* (per scaricarli occorre essere autenticati su GitHub).
 
+Ogni job della matrice pubblica inoltre l'**eseguibile portatile** (il
+binario release *non* installato) come artefatto separato della run:
+`latex-editor-portable-windows` (`.exe`), `latex-editor-portable-linux`
+(binario) e `latex-editor-portable-macos` (`.app` zippata). Si scarica
+dalla scheda *Actions*, si esegue direttamente e **non tocca l'eventuale
+versione installata**: il modo più rapido per provare una build senza
+disinstallare nulla. Il workflow ne verifica la presenza con `ls` e
+fallisce se l'artefatto manca.
+
 ## Architettura
 
 ```
