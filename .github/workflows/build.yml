@@ -203,7 +203,7 @@ jobs:
               ;;
             macos-latest)
               test -d "src-tauri/target/release/bundle/macos/LaTeX Editor Offline.app"
-              ditto -c -k --seal-src --keepParent \
+              ditto -c -k --keepParent \
                 "src-tauri/target/release/bundle/macos/LaTeX Editor Offline.app" \
                 portable-stage/LaTeX-Editor-Offline-macos-portable.zip
               ;;
