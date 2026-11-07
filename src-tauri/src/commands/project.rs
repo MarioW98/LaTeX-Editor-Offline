@@ -30,7 +30,7 @@ pub fn resolve_in_root(root: &Path, rel: &str) -> AppResult<PathBuf> {
             Component::Normal(c) => normalized.push(c),
             Component::CurDir => {}
             _ => {
-                return Err(AppError(format!(
+                return Err(AppError::Plain(format!(
                     "percorso non valido (fuori dal progetto?): {rel}"
                 )))
             }
@@ -102,7 +102,7 @@ pub async fn select_project_folder() -> AppResult<Option<String>> {
             .pick_folder()
     })
     .await
-    .map_err(|e| AppError(format!("folder picker failed: {e}")))?;
+    .map_err(|e| AppError::Plain(format!("folder picker failed: {e}")))?;
     Ok(picked.map(|p| p.to_string_lossy().into_owned()))
 }
 
@@ -111,12 +111,12 @@ pub async fn read_file_tree(root: String) -> AppResult<Vec<FileNode>> {
     tauri::async_runtime::spawn_blocking(move || {
         let root = PathBuf::from(root);
         if !root.is_dir() {
-            return Err(AppError("la cartella del progetto non esiste".into()));
+            return Err(AppError::Plain("la cartella del progetto non esiste".into()));
         }
         Ok(read_dir_recursive(&root, "")?)
     })
     .await
-    .map_err(|e| AppError(format!("task failed: {e}")))?
+    .map_err(|e| AppError::Plain(format!("task failed: {e}")))?
 }
 
 #[tauri::command]
@@ -130,7 +130,7 @@ pub async fn read_file(root: String, path: String) -> AppResult<FileContent> {
         read_file_content(&full)
     })
     .await
-    .map_err(|e| AppError(format!("task failed: {e}")))?
+    .map_err(|e| AppError::Plain(format!("task failed: {e}")))?
 }
 
 #[tauri::command]
@@ -143,7 +143,7 @@ pub async fn write_file(root: String, path: String, content: String) -> AppResul
         Ok(crate::atomic_io::write_atomic(&full, content.as_bytes())?)
     })
     .await
-    .map_err(|e| AppError(format!("task failed: {e}")))?
+    .map_err(|e| AppError::Plain(format!("task failed: {e}")))?
 }
 
 #[tauri::command]
@@ -155,12 +155,12 @@ pub async fn create_item(
 ) -> AppResult<()> {
     tauri::async_runtime::spawn_blocking(move || {
         if !valid_name(&name) {
-            return Err(AppError(format!("nome non valido: {name:?}")));
+            return Err(AppError::Plain(format!("nome non valido: {name:?}")));
         }
         let base = resolve_in_root(Path::new(&root), &parent)?;
         let full = base.join(&name);
         if full.exists() {
-            return Err(AppError("esiste già un elemento con questo nome".into()));
+            return Err(AppError::Plain("esiste già un elemento con questo nome".into()));
         }
         if kind == "dir" {
             std::fs::create_dir_all(&full)?;
@@ -173,31 +173,31 @@ pub async fn create_item(
         Ok(())
     })
     .await
-    .map_err(|e| AppError(format!("task failed: {e}")))?
+    .map_err(|e| AppError::Plain(format!("task failed: {e}")))?
 }
 
 #[tauri::command]
 pub async fn rename_item(root: String, path: String, new_name: String) -> AppResult<()> {
     tauri::async_runtime::spawn_blocking(move || {
         if !valid_name(&new_name) {
-            return Err(AppError(format!("nome non valido: {new_name:?}")));
+            return Err(AppError::Plain(format!("nome non valido: {new_name:?}")));
         }
         let full = resolve_in_root(Path::new(&root), &path)?;
         if !full.exists() {
-            return Err(AppError("l'elemento da rinominare non esiste".into()));
+            return Err(AppError::Plain("l'elemento da rinominare non esiste".into()));
         }
         let dest = match full.parent() {
             Some(p) => p.join(&new_name),
-            None => return Err(AppError("percorso sorgente non valido".into())),
+            None => return Err(AppError::Plain("percorso sorgente non valido".into())),
         };
         if dest.exists() {
-            return Err(AppError("esiste già un elemento con questo nome".into()));
+            return Err(AppError::Plain("esiste già un elemento con questo nome".into()));
         }
         std::fs::rename(&full, &dest)?;
         Ok(())
     })
     .await
-    .map_err(|e| AppError(format!("task failed: {e}")))?
+    .map_err(|e| AppError::Plain(format!("task failed: {e}")))?
 }
 
 #[tauri::command]
@@ -205,7 +205,7 @@ pub async fn delete_item(root: String, path: String) -> AppResult<()> {
     tauri::async_runtime::spawn_blocking(move || {
         let rel = path.trim().trim_matches('/');
         if rel.is_empty() || rel == "." || rel == ".." {
-            return Err(AppError(
+            return Err(AppError::Plain(
                 "impossibile eliminare la radice del progetto".into(),
             ));
         }
@@ -216,8 +216,8 @@ pub async fn delete_item(root: String, path: String) -> AppResult<()> {
         // Move to the system trash instead of a permanent recursive delete:
         // if the trash is unavailable this fails with an explicit error and
         // the item stays on disk — never a silent permanent deletion.
-        crate::trashbin::move_to_trash(&full).map_err(AppError)
+        crate::trashbin::move_to_trash(&full).map_err(AppError::Plain)
     })
     .await
-    .map_err(|e| AppError(format!("task failed: {e}")))?
+    .map_err(|e| AppError::Plain(format!("task failed: {e}")))?
 }

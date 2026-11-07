@@ -61,7 +61,7 @@ pub fn save_app_settings(app: AppHandle, settings: Value) -> AppResult<()> {
     let dir = app
         .path()
         .app_data_dir()
-        .map_err(|e| crate::error::AppError(format!("app data dir: {e}")))?;
+        .map_err(|e| crate::error::AppError::Plain(format!("app data dir: {e}")))?;
     std::fs::create_dir_all(&dir)?;
     std::fs::write(
         dir.join("settings.json"),

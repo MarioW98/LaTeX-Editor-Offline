@@ -48,7 +48,7 @@ pub fn as_editable_text(bytes: &[u8]) -> Option<&str> {
 /// the 8 MiB limit is stated, so the user knows why nothing opened.
 fn too_large(size: u64) -> AppError {
     let mb = size as f64 / (1024.0 * 1024.0);
-    AppError(format!(
+    AppError::Plain(format!(
         "file troppo grande per l'editor ({mb:.1} MB): massimo 8 MiB"
     ))
 }
@@ -152,14 +152,12 @@ mod tests {
             .err()
             .expect("un file da 9 MiB deve essere rifiutato, non caricato");
         assert!(
-            err.0.contains("troppo grande"),
-            "l'errore deve essere esplicito sulla dimensione, invece: {}",
-            err.0
+            err.to_string().contains("troppo grande"),
+            "l'errore deve essere esplicito sulla dimensione, invece: {err}"
         );
         assert!(
-            err.0.contains("8 MiB"),
-            "l'errore deve dichiarare il massimo, invece: {}",
-            err.0
+            err.to_string().contains("8 MiB"),
+            "l'errore deve dichiarare il massimo, invece: {err}"
         );
     }
 

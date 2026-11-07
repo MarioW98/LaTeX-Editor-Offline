@@ -11,6 +11,7 @@ use std::time::{Instant, SystemTime, UNIX_EPOCH};
 use crate::build_slot::{poll_action, OwnChild, PollAction};
 use crate::error::{AppError, AppResult};
 use crate::state::{AppState, BuildJob};
+use crate::toolchain::{choose_build_driver, BuildDriver, ToolDetection};
 use tauri::{AppHandle, Emitter, Manager};
 
 const LOG_CAP: usize = 5000;
@@ -106,6 +107,26 @@ fn probe(tool: &str) -> ToolInfo {
             version: String::new(),
         },
     }
+}
+
+// Rilevazione MINIMALE per il gate di start_build (M0.7.1): si sondano con
+// `probe` solo latexmk e il motore richiesto; gli altri motori SOLO se
+// entrambi mancano, per distinguere «nessuna distribuzione» da
+// «distribuzione presente ma motore richiesto mancante». Mai bibtex/biber,
+// mai uno spawn usato come rilevazione: la mappa completa dei sei tool è
+// compito di detect_latex, per la UI.
+fn detect_for_build(requested: &str) -> ToolDetection {
+    let mut d = ToolDetection::default()
+        .with_engine("latexmk", probe("latexmk").available)
+        .with_engine(requested, probe(requested).available);
+    if !d.latexmk && !d.any_engine() {
+        for e in ["pdflatex", "xelatex", "lualatex"] {
+            if e != requested {
+                d = d.with_engine(e, probe(e).available);
+            }
+        }
+    }
+    d
 }
 
 #[tauri::command]
@@ -266,19 +287,35 @@ pub async fn start_build(
     shell_escape: bool,
 ) -> AppResult<BuildStartInfo> {
     if !matches!(engine.as_str(), "pdflatex" | "xelatex" | "lualatex") {
-        return Err(AppError(format!("engine non supportato: {engine}")));
+        return Err(AppError::Plain(format!("engine non supportato: {engine}")));
     }
     let root_path = PathBuf::from(&root);
     if !root_path.is_dir() {
-        return Err(AppError("la cartella del progetto non esiste".into()));
+        return Err(AppError::Plain("la cartella del progetto non esiste".into()));
     }
     let main_path = crate::commands::project::resolve_in_root(&root_path, &main_file)?;
     if !main_path.is_file() {
-        return Err(AppError(format!(
+        return Err(AppError::Plain(format!(
             "file principale non trovato: {main_file} — se il tuo documento ha un altro nome, \
              correggilo in Impostazioni → File principale (o crea il file con «+ file»)"
         )));
     }
+
+    // M0.7.1 — GATE: la compilazione non parte MAI alla cieca. Prima di
+    // riservare lo slot (e prima di creare qualunque cartella) la decisione
+    // su CHE COSA guiderà la build passa per la logica pura
+    // `toolchain::choose_build_driver` applicata a una rilevazione minima.
+    // Se la rilevazione dice che il toolchain non c'è, il comando ritorna
+    // l'esito TIPIZZATO (AppError::Toolchain) senza tentare alcuno spawn:
+    // l'errore `io` grezzo («program not found») non esiste più come esito
+    // di start_build.
+    let detection = tauri::async_runtime::spawn_blocking({
+        let requested = engine.clone();
+        move || detect_for_build(&requested)
+    })
+    .await
+    .map_err(|e| AppError::Plain(format!("rilevazione strumenti non riuscita: {e}")))?;
+    let driver = choose_build_driver(&detection, &engine)?;
     let jobname = main_path
         .file_stem()
         .and_then(|s| s.to_str())
@@ -295,9 +332,15 @@ pub async fn start_build(
     let job_id = state
         .slot
         .reserve()
-        .map_err(|_| AppError("una compilazione è già in corso".into()))?;
+        .map_err(|_| AppError::Plain("una compilazione è già in corso".into()))?;
 
-    let latexmk_used = probe("latexmk").available;
+    // La decisione del gate decide anche il driver del monitor: latexmk
+    // guida la build quando è disponibile, altrimenti il motore richiesto
+    // gira direttamente con la sequenza multi-passaggio propria.
+    let (latexmk_used, decided_engine) = match &driver {
+        BuildDriver::Latexmk { engine } => (true, engine.clone()),
+        BuildDriver::Engine { engine } => (false, engine.clone()),
+    };
     let lines: Arc<Mutex<Vec<LogLine>>> = Arc::new(Mutex::new(Vec::new()));
     let texinputs = tex_inputs_env(&out_dir)?;
 
@@ -307,7 +350,7 @@ pub async fn start_build(
     let root2 = root_path.clone();
     let out_dir2 = out_dir.clone();
     let jobname2 = jobname.clone();
-    let engine2 = engine.clone();
+    let engine2 = decided_engine;
     let main_file2 = main_file.clone();
     let latexmk_mode = latexmk_used;
 
@@ -584,7 +627,7 @@ pub async fn read_pdf_bytes(root: String, main_file: String) -> AppResult<tauri:
             .join("build")
             .join(format!("{jobname}.pdf"));
         let bytes = std::fs::read(&pdf).map_err(|_| {
-            AppError(format!(
+            AppError::Plain(format!(
                 "PDF non trovato: compila prima il progetto ({})",
                 pdf.display()
             ))
@@ -592,5 +635,5 @@ pub async fn read_pdf_bytes(root: String, main_file: String) -> AppResult<tauri:
         Ok(tauri::ipc::Response::new(bytes))
     })
     .await
-    .map_err(|e| AppError(format!("task failed: {e}")))?
+    .map_err(|e| AppError::Plain(format!("task failed: {e}")))?
 }
