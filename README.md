@@ -5,6 +5,9 @@
 Un editor LaTeX **originale e completamente offline** per Windows, Linux e
 macOS: file sul disco, compilazione locale (latexmk o pipeline a passate),
 anteprima PDF integrata. Nessun account, nessun server, nessuna telemetria.
+L'app va in rete SOLO se premi tu «Controlla aggiornamenti» (vedi la
+sezione [«Aggiornamenti»](#aggiornamenti-opt-in)): mai all'avvio, mai in
+automatico.
 
 > Progetto originale: codice, testi, modelli e icone sono stati scritti da
 > zero per questo editor. Non contiene codice, risorse, testi o loghi di
@@ -17,10 +20,11 @@ anteprima PDF integrata. Nessun account, nessun server, nessuna telemetria.
 dell'interfaccia e delle scorciatoie, compilazione, modelli, struttura dei
 documenti e risoluzione dei problemi.
 
-**[Manuale d'uso in PDF (A4)](docs/manuale.pdf)** — la stessa documentazione
-in un unico file pronto da **scaricare, stampare o archiviare offline**:
-copertina, indice e le 12 sezioni del manuale. Aggiornato insieme alla
-versione web.
+**[Manuale d'uso in PDF (A4)](docs/manuale.pdf)** — copertina, indice e le
+sezioni del manuale, pronto da **scaricare, stampare o archiviare offline**.
+Nota: il PDF è l'edizione 1.0 del manuale (riferita all'app 0.1.x); per la
+documentazione aggiornata — inclusa la sezione aggiornamenti — fai riferimento
+alla versione web qui sopra.
 
 ## Scarica l'app (installatori pronti)
 
@@ -48,6 +52,35 @@ link diretti qui sotto.
 > Per compilare i documenti serve un compilatore LaTeX già installato:
 > MiKTeX (Windows) · TeX Live (Linux) · MacTeX (macOS). L'app lo rileva
 > automaticamente all'avvio.
+
+## Aggiornamenti (opt-in)
+
+L'editor resta **completamente offline**: progetti, compilazione, anteprima
+PDF e impostazioni non toccano mai la rete. L'unica eccezione è una, ed è
+una scelta tua:
+
+- **L'app controlla gli aggiornamenti SOLO quando premi «Controlla
+  aggiornamenti»** nella barra superiore. Non esiste alcun controllo
+  automatico: né all'avvio, né in background, né dopo la compilazione.
+- **Nessuna telemetria**: il controllo scarica solo `latest.json` (versione,
+  data, note) dal rilascio più recente; l'app non invia alcun dato.
+- **Gli aggiornamenti sono firmati e verificati**: ogni pacchetto di update
+  è firmato con minisign e l'app rifiuta pacchetti la cui firma non verifica
+  contro la chiave pubblica del maintainer incorporata nell'app.
+- **Update solo dai rilasci versionati** (`v*`): il rilascio «latest» che si
+  aggiorna a ogni push su `main` è una prerelease e l'updater non la
+  considera mai.
+- **Flusso esplicito**: «Controlla aggiornamenti» → Scarica aggiornamento →
+  Installa e riavvia. Prima di installare, l'app salva su disco TUTTI i
+  file non ancora salvati; su Windows l'app si chiude durante
+  l'installazione (limitazione degli installer) e riapre al termine.
+- Se non premi mai il pulsante, l'app resta offline per sempre: nessun
+  traffico di rete in background.
+
+Chi preferisce aggiornare a mano può continuare a farlo: gli installer degli
+ultimi rilasci restano nella pagina [Releases](https://github.com/MarioW98/LaTeX-Editor-Offline/releases)
+e un `.msi` con versione più recente si installa sopra quello esistente
+senza disinstallare nulla.
 
 ## Caratteristiche (milestone 1)
 
@@ -79,7 +112,8 @@ link diretti qui sotto.
 
 ## Requisiti
 
-- **Node.js ≥ 18** e npm
+- **Node.js ≥ 22** e npm (il repo ha `engines: { node: ">=22" }`: i test
+  usano `node --test --experimental-strip-types`, che richiede Node ≥ 22.6)
 - **Rust ≥ 1.77** (https://rustup.rs)
 - Una **distribuzione LaTeX** installata localmente (l'editor non scarica
   nulla):
@@ -137,11 +171,14 @@ Note per piattaforma:
 - **macOS**: per un binario universale (Apple Silicon + Intel):
   `rustup target add aarch64-apple-darwin x86_64-apple-darwin` e poi
   `npm run tauri build -- --target universal-apple-darwin`.
-- **Firma**: i binari prodotti non sono firmati. Windows mostra SmartScreen
-  al primo avvio («Ulteriori informazioni → Esegui comunque»); su macOS usa
-  tasto destro → Apri, oppure `xattr -cr "LaTeX Editor Offline.app"`. Per
-  firmare: `signtool` (Windows) o `codesign`/`notarytool` (macOS, serve un
-  Apple Developer ID).
+- **Firma**: i binari NON hanno firma di sistema operativo — Windows mostra
+  SmartScreen al primo avvio («Ulteriori informazioni → Esegui comunque»);
+  su macOS usa tasto destro → Apri, oppure `xattr -cr "LaTeX Editor
+  Offline.app"`. Per firmare a livello di OS: `signtool` (Windows) o
+  `codesign`/`notarytool` (macOS, serve un Apple Developer ID).
+  **Firma degli aggiornamenti** (cosa diversa): con `createUpdaterArtifacts`
+  attivo e le variabili `TAURI_SIGNING_PRIVATE_KEY[…]` impostate, il build
+  produce anche i `.sig` minisign verificati dall'updater in-app.
 
 ### Build automatica con GitHub Actions (tutti e tre gli OS)
 
@@ -153,8 +190,11 @@ con **nomi fissi** (link diretti nel README, sopra):
 - **push su `main`** → aggiorna il rilascio «latest» (pre-release) con
   un solo file per sistema: `.msi` (Windows), `.deb` + `.AppImage` (Linux),
   `.dmg` (macOS), scaricabili senza login;
-- **push di un tag** (`git tag v0.1.0 && git push origin v0.1.0`) → crea il
-  rilascio versionato con note generate automaticamente;
+- **push di un tag** (`git tag v0.2.0 && git push origin v0.2.0`) → crea il
+  rilascio versionato con note generate automaticamente, **più** gli
+  artifact updater firmati (`.msi.sig`, `.AppImage.sig`, `.app.tar.gz` +
+  `.sig`) e `latest.json`, l'indice che l'app scarica solo su richiesta
+  esplicita dell'utente (vedi [«Aggiornamenti»](#aggiornamenti-opt-in));
 - **manuale**: scheda *Actions* → *Build installers* → *Run workflow*.
 
 I file restano disponibili anche come artefatti della singola run nella
@@ -194,9 +234,10 @@ fallisce se l'artefatto manca.
   componente per componente e i componenti assoluti e `..` vengono
   rifiutati, quindi ogni accesso resta confinato nella cartella del progetto
   scelta; il motore è scelto da una whitelist (pdflatex/xelatex/lualatex);
-  niente esecuzione di shell arbitrarie, niente rete. `-shell-escape` è
+  niente esecuzione di shell arbitrarie. `-shell-escape` è
   **disattivato** per impostazione predefinita e l'interfaccia ne spiega i
-  rischi quando lo attivi.
+  rischi quando lo attivi. L'unico accesso alla rete è il comando
+  esplicito di aggiornamento (vedi sopra): tutto il resto è offline.
 - **Dati**: i progetti restano normali cartelle su disco
   (`.latex-editor/settings.json` per progetto, output in
   `.latex-editor/build/`). Nessun formato proprietario: i file `.tex` restano
@@ -220,7 +261,10 @@ latex-editor-offline/
 │   ├── build/        pannello output: log, contatori, errori cliccabili
 │   ├── pdf/          anteprima PDF.js (zoom, adatta, ricarica)
 │   ├── features/     templates.ts (i 5 modelli originali)
-│   ├── state/        store Zustand (tab, buffer, build, impostazioni)
+│   ├── state/        store Zustand (tab, buffer, build, impostazioni,
+│   │                 macchina a stati degli aggiornamenti opt-in)
+│   ├── updater/      updaterService.ts — l'UNICO punto che importa i
+│   │                 plugin di aggiornamento (rete solo su comando)
 │   ├── collab/       SOLO interfacce per la collaborazione futura
 │   ├── styles/  types.ts  vite-env.d.ts
 └── src-tauri/
@@ -287,8 +331,14 @@ latex-editor-offline/
 10. **Beamer incluso tra i modelli** ma richiede il pacchetto `beamer`
     (presente nelle distribuzioni complete; segnalato nel README del
     modello).
-11. **Nessun aggiornamento automatico dell'app**: coerente con il vincolo
-    offline.
+11. **Aggiornamenti solo su richiesta esplicita**: l'app non fa MAI check
+    automatici (né all'avvio né in background) e non ha telemetria; la rete
+    si tocca solo al click su «Controlla aggiornamenti». I pacchetti di
+    update sono firmati minisign e verificati contro la pubkey incorporata;
+    l'endpoint punta all'ultimo rilascio versionato (le prerelease sono
+    saltate). In passato la decisione era «nessun aggiornamento in-app»: è
+    cambiata in «opt-in firmato» mantenendo il vincolo offline per tutto
+    il resto.
 
 ## Checklist di collaudo manuale
 
@@ -331,7 +381,8 @@ latex-editor-offline/
   controllo ortografico, rilevamento di modifiche esterne ai file.
 - PDF.js senza `cmaps`: alcuni PDF con testi CJK possono non estrarre il
   testo (la resa resta di solito corretta).
-- Una sola finestra; nessun aggiornamento automatico.
+- Una sola finestra; nessun controllo AUTOMATICO degli aggiornamenti: si
+  aggiornano solo premendo «Controlla aggiornamenti».
 - Il bundle JavaScript è unico (≈0,9 MB + worker PDF.js): irrilevante su
   desktop, ma suddividibile in futuro.
 - Il lato Rust è stato verificato con una revisione statica completa
@@ -357,6 +408,8 @@ latex-editor-offline/
 | Dipendenza | Licenza |
 | --- | --- |
 | tauri, tauri-build, serde, serde_json | MIT o Apache-2.0 |
+| tauri-plugin-updater, tauri-plugin-process (aggiornamenti opt-in) | MIT o Apache-2.0 |
+| @tauri-apps/plugin-updater, @tauri-apps/plugin-process (binding JS) | MIT o Apache-2.0 |
 | rfd (dialoghi nativi) | MIT o Apache-2.0 |
 | regex | MIT o Apache-2.0 |
 | once_cell | MIT o Apache-2.0 |

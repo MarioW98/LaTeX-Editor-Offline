@@ -1,15 +1,20 @@
 # Manuale d'uso — LaTeX Editor Offline
 
-Versione del manuale: 1.0 (app 0.1.x) · lingua: italiano · licenza dell'app: MIT
+Versione del manuale: 1.1 (app 0.2.x) · lingua: italiano · licenza dell'app: MIT
 
 > Questo manuale è disponibile anche in **[formato PDF](manuale.pdf)** pronto
 > da scaricare, stampare o archiviare offline (copertina e indice inclusi).
+> Nota: il PDF è l'edizione 1.0 del manuale (riferita all'app 0.1.x, senza
+> la sezione aggiornamenti); questa versione web è la aggiornata.
 
 Benvenuto! Questo manuale copre tutto il percorso: installazione, uso
 dell'interfaccia, compilazione, modelli e organizzazione dei documenti LaTeX,
-fino alla risoluzione dei problemi. L'app è **completamente offline**: nessun
-account, nessun server, nessuna telemetria; i progetti restano normali
-cartelle sul tuo disco.
+fino alla risoluzione dei problemi. L'editor è **offline**: nessun
+account, nessuna sincronizzazione cloud, nessuna telemetria; i progetti
+restano normali cartelle sul tuo disco. L'app va in rete SOLO quando premi
+«Controlla aggiornamenti» (vedi la sezione
+[12](#12-aggiornamenti-e-disinstallazione)): mai all'avvio, mai in
+automatico.
 
 > Scorciatoie: [download](#2-requisiti-e-installazione) ·
 > [primi passi](#3-primi-passi) · [interfaccia](#4-linterfaccia) ·
@@ -32,7 +37,7 @@ cartelle sul tuo disco.
 9. [Modelli inclusi](#9-modelli-inclusi)
 10. [Risoluzione dei problemi](#10-risoluzione-dei-problemi)
 11. [Privacy, dati e backup](#11-privacy-dati-e-backup)
-12. [Aggiornamento e disinstallazione](#12-aggiornamento-e-disinstallazione)
+12. [Aggiornamenti e disinstallazione](#12-aggiornamenti-e-disinstallazione)
 
 ---
 
@@ -47,12 +52,14 @@ macOS, pensato per chi vuole lavorare **senza dipendenze dalla rete**:
   (MiKTeX, TeX Live o MacTeX), con `latexmk` quando disponibile e una
   pipeline a passate multiple in alternativa;
 - l'anteprima del PDF è integrata (rendering PDF.js locale);
-- nessun account, nessuna sincronizzazione cloud, nessuna telemetria, nessun
-  aggiornamento automatico: sei tu a decidere quando scaricare una nuova
-  versione.
+- nessun account, nessuna sincronizzazione cloud, nessuna telemetria e
+  nessun controllo automatico di versioni: sei tu a decidere quando (e se)
+  cercare un aggiornamento, con l'omonimo pulsante della barra superiore.
 
-L'app non scarica mai nulla e non invia mai nulla in rete: se un compilatore
+L'editor non scarica mai nulla e non invia mai nulla in rete: se un compilatore
 LaTeX manca, te lo dice e resta in attesa — non lo installa al posto tuo.
+L'unica attività di rete dell'app è il controllo aggiornamenti **che avvii tu**
+(vedi [12](#12-aggiornamenti-e-disinstallazione)).
 
 ---
 
@@ -269,6 +276,7 @@ omonimi nella barra superiore.
 | **Compila (F5)** / **Ferma compilazione** | avvia / interrompe la compilazione in corso |
 | **File / Output / PDF** | mostra o nasconde i tre pannelli |
 | **Impostazioni** | apre la finestra delle impostazioni del progetto |
+| **Controlla aggiornamenti** | cerca aggiornamenti SOLO su tua richiesta: l'app non lo fa mai da sola (vedi [12](#12-aggiornamenti-e-disinstallazione)) |
 | badge «N non salvati» | quanti file modificati non ancora salvati |
 
 Il nome del progetto (nome della cartella) è visibile accanto al logo.
@@ -545,6 +553,7 @@ l'esempio completo `examples/demo-article`.
 | AppImage non si avvia | Installa FUSE oppure estrai: `./...AppImage --appimage-extract` |
 | macOS: «non sviluppato da uno sviluppatore identificato» | Clic destro sull'app → **Apri** (una volta). Vedi [2.5](#25-installazione-su-macos) |
 | MiKTeX scarica pacchetti durante la compilazione | È il comportamento «on-the-fly»: per restare offline imposta «Ask»/preinstalla i pacchetti necessari, o usa TeX Live completa |
+| «Controlla aggiornamenti» dice che la rete non risponde | È l'unico momento in cui l'app usa la rete: controlla la connessione e premi «Riprova»; l'editor nel frattempo funziona regolarmente offline |
 | Beamer non compila | Installa il pacchetto `beamer` nella distribuzione |
 | Non trovo i file di build | Sono in `<progetto>/.latex-editor/build` (PDF compreso); non modificarli a mano |
 | L'app può leggere file fuori dal progetto? | No: ogni percorso è validato e confinato nella cartella del progetto aperto |
@@ -558,8 +567,13 @@ README.
 
 ## 11. Privacy, dati e backup
 
-- **Rete**: nessuna. Nessun account, nessuna telemetria, nessun controllo
-  di versione remota, nessun aggiornamento automatico.
+- **Rete**: praticamente zero. Nessun account, nessuna telemetria, nessun
+  controllo di versione remota, nessun check automatico all'avvio. L'unica
+  attività di rete è quella che avvii tu con «Controlla aggiornamenti»: in
+  quel momento l'app scarica solo `latest.json` e, se decidi di proseguire,
+  il pacchetto firmato dell'aggiornamento (vedi
+  [12](#12-aggiornamenti-e-disinstallazione)). Se non lo premi mai, l'app
+  resta offline per sempre.
 - **File che l'app tocca**: solo dentro la cartella del progetto aperto
   (file tuoi + `.latex-editor/`) e la sua cartella dati utente (vedi
   [6](#6-impostazioni)) per le preferenze dell'app.
@@ -570,19 +584,59 @@ README.
 
 ---
 
-## 12. Aggiornamento e disinstallazione
+## 12. Aggiornamenti e disinstallazione
 
-- **Aggiornare**: scarica il nuovo installer dagli stessi link in [2.1](#21-download-degli-installatori)
-  e installalo sopra la versione precedente (nessun aggiornamento
-  automatico, per scelta progettuale: sei sempre tu a decidere).
-- **Disinstallare**:
-  - Windows: *Impostazioni → App → LaTeX Editor Offline → Disinstalla*;
-  - Linux `.deb`: `sudo apt remove latex-editor-offline`;
-  - Linux AppImage / macOS: cancella il file / l'app da *Applicazioni*.
-- I progetti restano al loro posto sul disco in ogni caso.
+### 12.1 Aggiornamenti: solo quando li chiedi tu
+
+Dalla versione 0.2.0 l'app ha un **controllo aggiornamenti integrato, ma
+completamente opt-in**. Il contratto cambia così, senza sconti:
+
+- **l'editor resta offline**: progetti, compilazione, anteprima PDF e
+  impostazioni non toccano mai la rete;
+- **l'app va in rete SOLO quando premi «Controlla aggiornamenti»** nella
+  barra superiore: nessun check all'avvio, nessun check in background,
+  nessuna telemetria — mai;
+- **gli aggiornamenti sono firmati**: ogni pacchetto è firmato con minisign
+  e l'app lo installa solo se la firma verifica la chiave pubblica del
+  maintainer incorporata nell'app; un pacchetto manomesso viene rifiutato;
+- **arrivano solo dai rilasci versionati**: il rilascio «latest» che si
+  aggiorna a ogni push del codice è una prerelease e non viene mai
+  considerato dall'updater.
+
+Il flusso, tutto esplicito:
+
+1. premi **«Controlla aggiornamenti»**;
+2. se c'è una versione nuova, sotto la barra superiore compare il numero di
+   versione e le note di rilascio: premi **«Scarica aggiornamento»** (la
+   barra mostra il progresso del download);
+3. a fine scaricamento premi **«Installa e riavvia»**: **prima** di
+   installare, l'app salva automaticamente tutti i file non ancora salvati
+   — non perdi nulla. Su Windows l'app si chiude per installare (è una
+   limitazione degli installer) e riapre da sola al termine;
+4. se la rete non risponde, compare un messaggio d'errore esplicito con un
+   pulsante **«Riprova»**: mai errori muti.
+
+Se non premi mai il pulsante, l'app resta offline per sempre.
+
+### 12.2 Aggiornamento manuale (alternativa)
+
+Puoi continuare ad aggiornare a mano come sempre: scarica il nuovo
+installer dagli stessi link in [2.1](#21-download-degli-installatori)
+e installalo sopra la versione precedente — **senza disinstallare nulla**:
+un `.msi` con versione più recente aggiorna quello installato (sulle
+versioni fino alla 0.1.x serviva il rito disinstalla/installa perché la
+versione restava ferma: dalla 0.2.0 la versione cresce a ogni rilascio).
+
+### 12.3 Disinstallazione
+
+- Windows: *Impostazioni → App → LaTeX Editor Offline → Disinstalla*;
+- Linux `.deb`: `sudo apt remove latex-editor-offline`;
+- Linux AppImage / macOS: cancella il file / l'app da *Applicazioni*.
+
+I progetti restano al loro posto sul disco in ogni caso.
 
 ---
 
-*Manuale riferito alla versione 0.1.x dell'applicazione. Per lo sviluppo, le
+*Manuale riferito alla versione 0.2.x dell'applicazione. Per lo sviluppo, le
 scorciatoie del repository e le decisioni progettuali, vedi il
 [README](../README.md).*
