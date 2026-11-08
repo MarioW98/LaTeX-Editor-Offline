@@ -152,6 +152,32 @@ jobs:
             echo "TAURI_SIGNING_PASSWORD_EOF"
           } >> "$GITHUB_ENV"
 
+      # M0.6.5.2 — cache degli strumenti di bundling del tauri bundler.
+      # package-lock.json fissa @tauri-apps/cli 2.12.4, che incorpora
+      # tauri-bundler 2.10.4: senza cache OGNI build riscarica dalla rete
+      # linuxdeploy e AppRun (Linux) e WiX (Windows), e un disservimento
+      # GitHub — il 504 della run #17 — basta a rendere rossa la CI.
+      # Percorsi letti sul codice del bundler in uso: dirs::cache_dir()/tauri,
+      # cioè ~/.cache/tauri su Linux (AppRun-<arch>, linuxdeploy-*.AppImage e
+      # plugin) e %LOCALAPPDATA%\tauri su Windows (WixTools314\; NSIS\ se un
+      # domani venisse attivato). La chiave -vN si bumpa quando una versione
+      # diversa del bundler cambia nomi o hash degli strumenti scaricati.
+      # macOS non scarica nulla per il bundling (app e dmg nativi, script
+      # incorporato nel bundler): nessuna cache lì.
+      - name: Cache bundler tools (Linux)
+        if: runner.os == 'Linux'
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/tauri
+          key: tauri-bundler-tools-${{ matrix.os }}-v1
+
+      - name: Cache bundler tools (Windows)
+        if: runner.os == 'Windows'
+        uses: actions/cache@v4
+        with:
+          path: ~\AppData\Local\tauri
+          key: tauri-bundler-tools-${{ matrix.os }}-v1
+
       - name: Build app bundles
         run: npm run tauri build -- --bundles ${{ matrix.target-bundles }}
 
