@@ -149,6 +149,21 @@ npm install        # dipendenze frontend
 npm run tauri dev  # avvia l'app in modalità sviluppo
 ```
 
+### Gate di verifica prima di OGNI push
+
+```bash
+npm run verify
+```
+
+Esegue in locale, fermandosi alla prima che fallisce, **le stesse sei porte
+che la CI apre prima della build**: coerenza della versione
+(`sync-version --check`), configurazione updater, typecheck (`tsc --noEmit`),
+test frontend e script, test Rust (`cargo test`) e lint Rust
+(`cargo clippy -- -D warnings`). Se una porta fallisce l'output dice **quale**
+ed esce con codice 1: correggi e ripeti. Il gate va eseguito **prima di ogni
+push** — un rosso deve scoprirlo chi lo causa, sul proprio computer, non la
+build pubblica.
+
 Altri comandi utili:
 
 ```bash
