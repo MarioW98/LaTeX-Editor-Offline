@@ -11,6 +11,9 @@ import {
 } from "../types.ts";
 import { TEMPLATES } from "../features/templates.ts";
 import { describeBuildStartError } from "../latex/latexStatusUi.ts";
+import { isLatexParseError, latexToDoc } from "../visual/latexToDoc.ts";
+import { docToLatex } from "../visual/docToLatex.ts";
+import type { DocJson } from "../visual/schema.ts";
 import {
   mapUpdaterError,
   realUpdaterPort,
@@ -47,6 +50,11 @@ export type UpdateUiState =
   | { phase: "ready"; version: string }
   | { phase: "error"; message: string; detail: string | null };
 
+/** Modalità dell'editor del file attivo (M1): il sorgente resta l'unica
+ * verità, la vista visuale è derivata dal parse e riconvertita dal serialize
+ * solo quando si torna a Sorgente. */
+export type EditorMode = "sorgente" | "visuale";
+
 export interface StoreState {
   rootPath: string | null;
   tree: FileNode[];
@@ -79,6 +87,18 @@ export interface StoreState {
   update: UpdateUiState;
   /** Porta updater iniettabile nei test (default: adapter reale). */
   updaterPort: UpdaterPort;
+
+  /** M1 — modalità dell'editor, documento della vista visuale ed eventuale
+   * errore italiano del parse (il sorgente resta intatto). */
+  editorMode: EditorMode;
+  visualDoc: DocJson | null;
+  visualError: string | null;
+  toggleToVisual: () => void;
+  toggleToSource: (doc: DocJson) => void;
+  /** Riporta nel buffer del tab `path` il documento visuale e torna a
+   * Sorgente: usata quando il tab attivo cambia mentre si è in visuale. */
+  leaveVisual: (path: string, doc: DocJson) => void;
+  chiudiVisualError: () => void;
   checkForUpdates: () => Promise<void>;
   downloadUpdate: () => Promise<void>;
   installUpdate: () => Promise<void>;
@@ -179,6 +199,64 @@ export const useStore = create<StoreState>()((set, get) => ({
   update: { phase: "idle" },
   updaterPort: realUpdaterPort,
 
+  editorMode: "sorgente",
+  visualDoc: null,
+  visualError: null,
+
+  // ---- M1: toggle Visuale/Sorgente ----
+
+  toggleToVisual: () => {
+    const { activeTab, buffers, binaryPaths } = get();
+    // Nessun file o file non modificabile (binario/non UTF-8): la vista
+    // visuale non parte, il sorgente resta l'unica cosa che si può vedere.
+    if (!activeTab || binaryPaths[activeTab]) return;
+    try {
+      const doc = latexToDoc(buffers[activeTab] ?? "");
+      set({ editorMode: "visuale", visualDoc: doc, visualError: null });
+    } catch (e) {
+      // Parse rifiutato: si resta su Sorgente, il sorgente resta intatto e
+      // l'errore diventa un messaggio visibile e comprensibile.
+      const causa = isLatexParseError(e)
+        ? e.causa === "sintassi"
+          ? "la sintassi LaTeX del file non è valida"
+          : "il documento non è chiuso correttamente (manca \\end{document})"
+        : "errore inatteso durante la conversione";
+      set({
+        editorMode: "sorgente",
+        visualDoc: null,
+        visualError: `Vista visuale non disponibile: ${causa}. Il sorgente resta intatto, correggilo e riprova.`,
+      });
+    }
+  },
+
+  toggleToSource: (doc) => {
+    const { activeTab, buffers } = get();
+    if (!activeTab) {
+      set({ editorMode: "sorgente", visualDoc: null, visualError: null });
+      return;
+    }
+    const sorgente = docToLatex(doc);
+    // Il toggle è innocuo quando il serialize riproduce il sorgente byte per
+    // byte: nessuna scrittura nel buffer, nessun dirty, nessun autosave.
+    if (sorgente !== (buffers[activeTab] ?? "")) {
+      get().updateBuffer(activeTab, sorgente);
+    }
+    set({ editorMode: "sorgente", visualDoc: null, visualError: null });
+  },
+
+  leaveVisual: (path, doc) => {
+    // Tab chiuso o progetto cambiato: come alla chiusura di un tab dentro la
+    // finestra di autosave, le modifiche non scritte restano dove sono.
+    if (!get().tabs.some((t) => t.path === path)) return;
+    const sorgente = docToLatex(doc);
+    if (sorgente !== (get().buffers[path] ?? "")) {
+      get().updateBuffer(path, sorgente);
+    }
+    set({ editorMode: "sorgente", visualDoc: null, visualError: null });
+  },
+
+  chiudiVisualError: () => set({ visualError: null }),
+
   bootstrap: async () => {
     get().detectLatex();
     try {
@@ -210,7 +288,7 @@ export const useStore = create<StoreState>()((set, get) => ({
     // in almost every LaTeX project). Empty the whole map.
     for (const p of [...autosaveTimers.keys()]) clearPendingAutosave(p);
     if (!root) {
-      set({ rootPath: null, tree: [], tabs: [], activeTab: null, buffers: {}, dirty: {}, binaryPaths: {}, buildLog: [], lastBuildSuccess: null });
+      set({ rootPath: null, tree: [], tabs: [], activeTab: null, buffers: {}, dirty: {}, binaryPaths: {}, buildLog: [], lastBuildSuccess: null, editorMode: "sorgente", visualDoc: null, visualError: null });
       return;
     }
     const tree = await api.readFileTree(root);
@@ -235,6 +313,9 @@ export const useStore = create<StoreState>()((set, get) => ({
       buildLog: [],
       lastBuildSuccess: null,
       welcomeAction: "none",
+      editorMode: "sorgente",
+      visualDoc: null,
+      visualError: null,
     });
     get().detectLatex();
     // Persist as last project (best effort).

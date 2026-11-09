@@ -1,0 +1,228 @@
+/* M1 — stili della vista visuale (toggle, toolbar, chip, verbatim).
+   Solo variabili di src/styles/global.css: nessun asset remoto. */
+
+/* ---- toggle Visuale/Sorgente nella barra dei tab ---- */
+
+.modeToggle {
+  margin-left: auto;
+  display: inline-flex;
+  gap: 2px;
+  padding-left: 8px;
+  flex: 0 0 auto;
+}
+
+.modeToggle button {
+  font-size: 12px;
+  padding: 2px 10px;
+  height: 24px;
+  border-radius: 6px;
+}
+
+.modeToggleAttivo {
+  background: #2b3040;
+  color: var(--text);
+  border-color: var(--accent);
+}
+
+/* ---- overlay della vista visuale sopra l'host CodeMirror ---- */
+
+.visualOverlay {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  background: #1b1d23;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+/* L'host CodeMirror resta MONTATO (la EditorView è attaccata una volta
+   sola): in modalità visuale viene solo nascosto, mai smontato. */
+.cmHostNascosto {
+  display: none;
+}
+
+.visualHost {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ---- toolbar di formattazione (solo modalità visuale) ---- */
+
+.toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--border);
+  background: var(--panel);
+  flex: 0 0 auto;
+}
+
+.toolbar button {
+  padding: 2px 8px;
+  font-size: 12.5px;
+  min-width: 30px;
+}
+
+.toolbar button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.toolbarAttivo {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.toolbarSeparatore {
+  width: 1px;
+  align-self: stretch;
+  margin: 2px 4px;
+  background: var(--border);
+  flex: 0 0 1px;
+}
+
+/* ---- area di editing TipTap ---- */
+
+.visualContent {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.visualContent :global(.ProseMirror) {
+  outline: none;
+  padding: 18px 26px 48px;
+  font-size: 14px;
+  line-height: 1.65;
+  min-height: 100%;
+}
+
+.visualContent :global(.ProseMirror p) {
+  margin: 0 0 0.9em;
+}
+
+.visualContent :global(.ProseMirror h1) {
+  font-size: 1.55em;
+  margin: 1.1em 0 0.55em;
+  font-weight: 600;
+}
+
+.visualContent :global(.ProseMirror h2) {
+  font-size: 1.3em;
+  margin: 1em 0 0.5em;
+  font-weight: 600;
+}
+
+.visualContent :global(.ProseMirror h3) {
+  font-size: 1.12em;
+  margin: 0.9em 0 0.45em;
+  font-weight: 600;
+}
+
+.visualContent :global(.ProseMirror ul),
+.visualContent :global(.ProseMirror ol) {
+  margin: 0 0 0.9em;
+  padding-left: 1.6em;
+}
+
+.visualContent :global(.ProseMirror li p) {
+  margin: 0;
+}
+
+.visualContent :global(.ProseMirror blockquote) {
+  margin: 0 0 0.9em;
+  padding: 0.1em 0 0.1em 1em;
+  border-left: 3px solid var(--border);
+  color: var(--muted);
+}
+
+/* ---- chip: LaTeX grezzo visibile, monospace, read-only ---- */
+
+.visualContent :global(.chip-inline) {
+  font-family: var(--mono);
+  font-size: 0.92em;
+  background: var(--panel2);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 0 4px;
+  color: var(--muted);
+  white-space: pre-wrap;
+  user-select: all;
+}
+
+.visualContent :global(.chip-blocco) {
+  font-family: var(--mono);
+  font-size: 12.5px;
+  background: var(--panel2);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 8px 12px;
+  margin: 0 0 0.9em;
+  color: var(--text);
+  white-space: pre;
+  overflow-x: auto;
+}
+
+.visualContent :global(.chip-preambolo)::before,
+.visualContent :global(.chip-postambio)::before {
+  content: "Preambolo";
+  display: block;
+  font-family: system-ui, sans-serif;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+  margin-bottom: 4px;
+}
+
+.visualContent :global(.chip-postambio)::before {
+  content: "Dopo il documento";
+}
+
+.visualContent :global(.blocco-verbatim) {
+  font-family: var(--mono);
+  font-size: 12.5px;
+  background: var(--panel2);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 10px 12px;
+  margin: 0 0 0.9em;
+  white-space: pre-wrap;
+  overflow-x: auto;
+}
+
+.visualContent :global(.blocco-verbatim code) {
+  background: transparent;
+  padding: 0;
+  font-family: inherit;
+}
+
+/* ---- banner d'errore del parse (modalità visuale rifiutata) ---- */
+
+.visualErrorBar {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 6;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  background: rgba(229, 101, 94, 0.14);
+  border-bottom: 1px solid var(--red);
+  color: var(--text);
+  font-size: 12.5px;
+}
+
+.visualErrorBar span {
+  flex: 1;
+}
+
+.visualErrorBar button {
+  flex: 0 0 auto;
+}
