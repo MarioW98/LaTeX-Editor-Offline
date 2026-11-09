@@ -1,0 +1,196 @@
+% Fixture M1 — documento realistico per i test del motore visuale.
+% La forma è quella canonica del serializzatore (docToLatex): blocchi separati
+% da UNA riga vuota, voci di lista rientrate di 2 spazi per livello.
+\documentclass[a4paper,11pt]{article}
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage[italian]{babel}
+\usepackage{geometry}
+\usepackage{amsmath}
+\usepackage{graphicx}
+\usepackage{tikz}
+
+% Comandi personali del documento.
+\newcommand{\sigla}[1]{\textsc{#1}}
+\newcommand{\datarelazione}{9 novembre 2026}
+
+\title{Relazione sull'editor \LaTeX{} offline}
+\author{Mario Rossi}
+\date{\datarelazione}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+Questa relazione descrive un editor \LaTeX{} completamente offline: il
+sorgente resta l'unica verità del documento e la vista visuale è derivata.
+\end{abstract}
+
+\section{Introduzione}
+
+\label{sec:intro}
+
+Il documento che state leggendo serve da fixture per i test del motore
+visuale: contiene tutti i costrutti del subset supportato e una sana
+porzione di LaTeX grezzo che deve tornare nel sorgente byte per byte.
+
+La formattazione inline è supportata: \textbf{grassetto}, \emph{corsivo},
+\underline{sottolineato} e \texttt{monospace}, anche \textbf{annidata con
+\emph{enfasi} dentro}. Il paragrafo continua su due righe % nota di revisione
+senza riga vuota in mezzo: il newline resta nel testo.
+
+I caratteri speciali si scrivono con l'escape letterale: il 100\% dei casi,
+il simbolo \$ per la valuta, \# per i riferimenti, l'underscore \_ e la
+e commerciale \&. La matematica inline resta un chip: $E = mc^2$ così come
+\(a^2 + b^2 = c^2\), con eventuali pedici $x_i^2$.
+
+Una nota a piè di pagina resta un chip verbatim\footnote{Le note non sono
+modificabili nella vista visuale V1.}, come i riferimenti alla
+Sezione~\ref{sec:liste} e le citazioni \cite{knuth1984}.
+
+% I costrutti non supportati seguono come chip, visibili e intoccabili.
+
+\section{Il \textbf{problema} del rendering}
+
+Il comando personale \sigla{WYSIWYM} e il maiuscoletto \textsc{M1} non sono
+nel subset: appaiono come chip inline con la slice verbatim. Lo stesso vale
+per il comando \LaTeX{} e per qualunque macro non riconosciuta.
+
+\subsection{Liste annidate}
+
+\label{sec:liste}
+
+Le liste sono modificabili nella vista visuale, anche annidate:
+
+\begin{itemize}
+  \item Prima voce con \textbf{grassetto}.
+  \item Seconda voce con un elenco annidato:
+    \begin{itemize}
+      \item Sotto-voce annidata con \emph{corsivo}.
+      \item Altra sotto-voce con matematica $x^2$ come chip.
+    \end{itemize}
+  \item Terza voce con passi numerati:
+    \begin{enumerate}
+      \item Aprire il progetto.
+      \item Premere F5 per compilare.
+    \end{enumerate}
+  \item Quarta e ultima voce.
+\end{itemize}
+
+Anche l'elenco numerato di primo livello è un blocco modificabile:
+
+\begin{enumerate}
+  \item Compilare il documento con F5.
+  \item Verificare il PDF generato.
+  \item Condividere il sorgente con i collaboratori.
+\end{enumerate}
+
+\subsection{Citazioni e codice}
+
+Le citazioni sono ambienti supportati con più paragrafi:
+
+\begin{quote}
+La semplicità è la massima raffinatezza.
+
+Il codice è poesia che il computer può eseguire, con \emph{enfasi} dove serve.
+\end{quote}
+
+Il blocco verbatim è modificabile e arriva tale e quale al sorgente:
+
+\begin{verbatim}
+$ pdflatex main.tex
+This is pdfTeX (ribadito: <nessun> download & 100% offline)
+\end{verbatim}
+
+\section*{Nota del curatore}
+
+Le sezioni con la forma stellata sono supportate dal subset: la stellina
+viene conservata nel round-trip e mostrata come attributo del titolo.
+
+\section{Matematica e blocchi grezzi}
+
+\label{sec:matematica}
+
+La matematica display non è resa in V1: resta un chip blocco verbatim, come
+la matematica inline. La TeXcia ride.
+
+\[
+V = \frac{4}{3}\pi r^3
+\]
+
+\begin{equation}
+E = mc^2 \label{eq:emc}
+\end{equation}
+
+\begin{align}
+a &= b + c \\
+d &= e + f \nonumber
+\end{align}
+
+\subsection{Figure e tabelle}
+
+Figure, tabelle e disegni non sono nel subset: interi ambienti come chip.
+
+\begin{figure}[htbp]
+  \centering
+  \includegraphics[width=0.7\textwidth]{grafico.pdf}
+  \caption{Un grafico di esempio con label.}
+  \label{fig:grafico}
+\end{figure}
+
+\begin{table}[htbp]
+  \centering
+  \begin{tabular}{lr}
+    Simbolo & Valore \\
+    \hline
+    $\alpha$ & 1.618 \\
+    $\pi$ & 3.14159 \\
+  \end{tabular}
+  \caption{Costanti usate negli esempi.}
+\end{table}
+
+\begin{center}
+Testo centrato, con \textbf{enfasi} che resta grezza nel chip.
+\end{center}
+
+\begin{tikzpicture}[scale=1.0]
+  \draw[thick] (0,0) rectangle (3,2);
+  \node at (1.5,1) {Editor};
+\end{tikzpicture}
+
+\section{Compatibilità e limiti del subset}
+
+Il subset V1 copre il testo di uso quotidiano: paragrafi, titoli, liste,
+citazioni, verbatim e la formattazione inline. Tutto il resto — matematica,
+figure, tabelle, disegni — viaggia come chip grezzo che il round-trip
+riporta identico a se stesso.
+
+I limiti sono dichiarati, non nascosti: la vista visuale non inventa mai
+LaTeX che l'utente non ha scritto e non scarta mai LaTeX che non capisce.
+Un documento con moltissima matematica resta principalmente un documento da
+editare in Sorgente, e va benissimo così.
+
+\begin{itemize}
+  \item La vista visuale deriva dal sorgente: mai due modelli sincronizzati.
+  \item Il toggle è innocuo quando il serialize riproduce il sorgente byte
+    per byte, come in questo file.
+  \item La matematica renderizzata arriva con un milestone successivo.
+\end{itemize}
+
+Un ultimo esempio di costrutti ai margini: l'elenco descrittivo è un chip,
+
+\begin{description}
+  \item[WYSIWYM] What You See Is What You Mean.
+  \item[Chip] porzione di sorgente mostrata grezza e non modificabile.
+\end{description}
+
+mentre la nota al piede resta tale\footnote{Anche qui, slice verbatim.} e il
+simbolo tilde nell'indirizzo utente~2 è testo valido.
+
+\section{Conclusioni}
+
+Il round-trip di questo documento deve essere un'identità byte per byte:
+paragrafi, liste, citazioni, verbatim, titoli e chip tornano al loro posto.
+La coda dopo il comando di chiusura contiene un commento finale.
+\end{document}
+% Fine del file: fixture generata per i test M1.
