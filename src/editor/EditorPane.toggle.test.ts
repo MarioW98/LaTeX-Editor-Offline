@@ -48,7 +48,13 @@ const { EditorPane } = await import("./EditorPane.tsx");
 const { useStore } = await import("../state/store.ts");
 const { DEFAULT_PROJECT_SETTINGS } = await import("../types.ts");
 
-const FIXTURE = readFileSync(new URL("../visual/fixtures/documento.tex", import.meta.url), "utf8");
+// La fixture letta dal disco viene normalizzata a LF: il test deve dipendere
+// dal CONTENUTO, non dal fine riga del worktree (CRLF su Windows con
+// core.autocrlf). Il flusso reale su sorgente CRLF ha il suo test qui sotto.
+const FIXTURE = readFileSync(new URL("../visual/fixtures/documento.tex", import.meta.url), "utf8").replace(
+  /\r\n/g,
+  "\n",
+);
 
 let contenitore: HTMLElement | null = null;
 let root: ReturnType<typeof ReactDOMClient.createRoot> | null = null;
@@ -196,4 +202,34 @@ test("parse rifiutato: resta su Sorgente, banner d'errore italiano, sorgente int
   await click(bottoneConTesto("Chiudi"));
   assert.equal(contenitore?.querySelector('[role="alert"]'), null, "il banner non si chiude");
   assert.equal(useStore.getState().visualError, null);
+});
+
+test("sorgente CRLF (file Windows reale): andata e ritorno innocua, buffer resta CRLF, nessun dirty", async () => {
+  // I .tex reali su Windows hanno spesso fine riga CRLF: il toggle senza
+  // modifiche NON deve riscriverli in LF (nessun dirty, nessun autosave),
+  // la vista visuale funziona uguale. Vedi toggleInnocuo in store.ts.
+  const crlf = FIXTURE.replace(/\n/g, "\r\n");
+  semiStore(crlf);
+  await React.act(async () => {
+    root?.render(React.createElement(EditorPane));
+  });
+
+  await click(bottoneConTesto("Visuale"));
+  assert.equal(useStore.getState().editorMode, "visuale");
+  assert.ok(contenitore?.querySelector(".ProseMirror"), "editor TipTap non montato su CRLF");
+
+  await click(bottoneConTesto("Sorgente"));
+  const s = useStore.getState();
+  assert.equal(s.editorMode, "sorgente");
+  assert.equal(
+    s.buffers["main.tex"],
+    crlf,
+    "il toggle innocuo ha riscritto il buffer CRLF senza un edit reale",
+  );
+  assert.equal(
+    s.dirty["main.tex"],
+    undefined,
+    "il toggle innocuo su CRLF ha sporcato il documento",
+  );
+  assert.equal(contenitore?.querySelector(".ProseMirror"), null, "la vista visuale è rimonta");
 });

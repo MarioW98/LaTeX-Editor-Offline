@@ -171,6 +171,21 @@ function relToRoot(file: string, root: string): string | null {
   return f;
 }
 
+/**
+ * M1 — Il worktree Windows e i .tex reali degli utenti spesso usano CRLF: il
+ * parse li accetta (\r?\n) e il serialize canonicalizza il CORPO in LF
+ * tenendo le slice verbatim (golden «fine riga CRLF» di docToLatex.test.ts).
+ * Il confronto che decide se l'utente ha davvero modificato qualcosa ignora
+ * quindi i fine riga: se il serialize coincide col buffer a meno di
+ * CRLF→LF, il toggle Visuale→Sorgente è innocuo anche su sorgente CRLF —
+ * nessuna riscrittura che cambierebbe il file senza un edit reale, nessun
+ * dirty, nessun autosave. Un edit vero differisce anche normalizzando.
+ */
+function toggleInnocuo(sorgente: string, buffer: string): boolean {
+  if (sorgente === buffer) return true;
+  return sorgente.replace(/\r\n/g, "\n") === buffer.replace(/\r\n/g, "\n");
+}
+
 export const useStore = create<StoreState>()((set, get) => ({
   rootPath: null,
   tree: [],
@@ -206,8 +221,7 @@ export const useStore = create<StoreState>()((set, get) => ({
   // ---- M1: toggle Visuale/Sorgente ----
 
   toggleToVisual: () => {
-    const { activeTab, buffers, binaryPaths } = get();
-    // Nessun file o file non modificabile (binario/non UTF-8): la vista
+    const { activeTab, buffers, binaryPaths } = get();    // Nessun file o file non modificabile (binario/non UTF-8): la vista
     // visuale non parte, il sorgente resta l'unica cosa che si può vedere.
     if (!activeTab || binaryPaths[activeTab]) return;
     try {
@@ -237,8 +251,11 @@ export const useStore = create<StoreState>()((set, get) => ({
     }
     const sorgente = docToLatex(doc);
     // Il toggle è innocuo quando il serialize riproduce il sorgente byte per
-    // byte: nessuna scrittura nel buffer, nessun dirty, nessun autosave.
-    if (sorgente !== (buffers[activeTab] ?? "")) {
+    // byte, O quando coincide col buffer a meno dei fine riga CRLF→LF che il
+    // serialize canonicalizza nel corpo (le slice verbatim di un sorgente
+    // CRLF restano CRLF): nessuna scrittura nel buffer, nessun dirty, nessun
+    // autosave — anche sui .tex CRLF reali degli utenti Windows.
+    if (!toggleInnocuo(sorgente, buffers[activeTab] ?? "")) {
       get().updateBuffer(activeTab, sorgente);
     }
     set({ editorMode: "sorgente", visualDoc: null, visualError: null });
@@ -249,7 +266,7 @@ export const useStore = create<StoreState>()((set, get) => ({
     // finestra di autosave, le modifiche non scritte restano dove sono.
     if (!get().tabs.some((t) => t.path === path)) return;
     const sorgente = docToLatex(doc);
-    if (sorgente !== (get().buffers[path] ?? "")) {
+    if (!toggleInnocuo(sorgente, get().buffers[path] ?? "")) {
       get().updateBuffer(path, sorgente);
     }
     set({ editorMode: "sorgente", visualDoc: null, visualError: null });

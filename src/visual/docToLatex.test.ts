@@ -19,7 +19,10 @@ import assert from "node:assert/strict";
 import { collectRawSlices, docToLatex } from "./docToLatex.ts";
 import { latexToDoc } from "./latexToDoc.ts";
 
-const FIXTURE = readFileSync(new URL("./fixtures/documento.tex", import.meta.url), "utf8");
+const FIXTURE = readFileSync(new URL("./fixtures/documento.tex", import.meta.url), "utf8").replace(
+  /\r\n/g,
+  "\n",
+);
 
 /** Round-trip: sorgente → documento → sorgente. */
 function rt(sorgente: string): string {

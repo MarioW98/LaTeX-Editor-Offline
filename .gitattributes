@@ -1,8 +1,26 @@
 # Fine riga canonici nel repository: git normalizza a LF tutto ciò che
 # riconosce come testo al momento del commit, su qualunque sistema operativo
-# di chi contribuisce. I binari (icone .ico/.icns/.png, .pdf, .deb, …) non
-# vengono toccati: git li classifica binari e li conserva byte per byte.
-# La robustezza al contenuto del WORKTREE (CRLF su Windows con
-# core.autocrlf) è responsabilità degli strumenti che leggono i file:
-# scripts/sync-version.mjs tollera entrambi i fine riga (M0.6.1).
-* text=auto
+# di chi contribuisce. I binari non vengono toccati: git li classifica
+# binari e li conserva byte per byte (regole esplicite sotto per gli asset).
+#
+# eol=lf: il WORKTREE resta LF anche su Windows. Senza, il checkout su
+# windows-latest (core.autocrlf attivo sui runner) produce file CRLF e il
+# round-trip visuale M1 — che per DESIGN canonicalizza il corpo in LF
+# tenendo le slice verbatim — non è più byte per byte: i test
+# «preservazione/idempotenza/andata e ritorno» arrossiscono SOLO su
+# Windows e la CI non produce il .msi (run #22 di build.yml).
+#
+# Dopo aver aggiunto questa riga il worktree locale va rinormalizzato una
+# volta sola (oppure ri-clona):
+#   git rm --cached -r . && git reset --hard
+#
+# La robustezza al contenuto reale dei .tex DELL'UTENTE (spesso CRLF su
+# Windows) resta responsabilità degli strumenti che li leggono: lo store
+# tratta il toggle Visuale→Sorgente su sorgente CRLF come innocuo
+# (src/state/store.ts, toggleInnocuo) e scripts/sync-version.mjs tollera
+# entrambi i fine riga (M0.6.1).
+* text=auto eol=lf
+*.png -text
+*.ico -text
+*.icns -text
+*.pdf -text

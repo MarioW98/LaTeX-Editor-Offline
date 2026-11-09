@@ -14,7 +14,14 @@ import assert from "node:assert/strict";
 import { DEFAULT_PROJECT_SETTINGS } from "../types.ts";
 import { autosaveTimers, useStore } from "./store.ts";
 
-const FIXTURE = readFileSync(new URL("../visual/fixtures/documento.tex", import.meta.url), "utf8");
+// La fixture letta dal disco viene normalizzata a LF: il test deve dipendere
+// dal CONTENUTO, non dal fine riga del worktree (CRLF su Windows con
+// core.autocrlf). Il comportamento su sorgente CRLF vero ha i suoi test
+// dedicati qui sotto.
+const FIXTURE = readFileSync(new URL("../visual/fixtures/documento.tex", import.meta.url), "utf8").replace(
+  /\r\n/g,
+  "\n",
+);
 
 function prepara(sorgente: string, path = "main.tex") {
   useStore.setState({
@@ -94,6 +101,59 @@ test("edits visivi: il buffer cambia, il documento si sporca, l'autosave si arma
   assert.equal(s.dirty["main.tex"], true, "l'edit visuale non ha sporcato il documento");
   const timer = autosaveTimers.get("main.tex");
   assert.ok(timer !== undefined, "autosave non armato dopo l'edit visuale");
+  if (timer !== undefined) clearTimeout(timer);
+  autosaveTimers.clear();
+});
+
+// ---- CRLF: i .tex reali su Windows hanno spesso fine riga CRLF. Il toggle
+// senza modifiche deve restare innocuo anche lì (nessuna riscrittura che
+// cambierebbe il file senza un edit reale), e un edit vero deve sporcare
+// come sempre. Vedi toggleInnocuo in store.ts. ----
+
+test("toggle innocuo su sorgente CRLF: buffer invariato (resta CRLF), nessun dirty, nessun autosave", () => {
+  const crlf = FIXTURE.replace(/\n/g, "\r\n");
+  prepara(crlf);
+  useStore.getState().toggleToVisual();
+  const doc = useStore.getState().visualDoc;
+  assert.ok(doc !== null, "il parse di un sorgente CRLF deve riuscire");
+  useStore.getState().toggleToSource(doc);
+
+  const s = useStore.getState();
+  assert.equal(s.editorMode, "sorgente");
+  assert.equal(s.visualDoc, null);
+  assert.equal(
+    s.buffers["main.tex"],
+    crlf,
+    "il toggle innocuo ha riscritto il buffer CRLF (fine riga cambiate senza un edit reale)",
+  );
+  assert.equal(
+    s.dirty["main.tex"],
+    undefined,
+    "il toggle innocuo su CRLF ha marcato il documento come sporco",
+  );
+  assert.equal(
+    autosaveTimers.has("main.tex"),
+    false,
+    "il toggle innocuo su CRLF ha armato il timer di autosave",
+  );
+});
+
+test("sorgente CRLF con edit visuale reale: il buffer cambia, dirty e autosave come sempre", () => {
+  const crlf = FIXTURE.replace(/\n/g, "\r\n");
+  prepara(crlf);
+  useStore.getState().toggleToVisual();
+  const doc = docConParagrafoAggiunto();
+  assert.ok(doc !== null);
+  useStore.getState().toggleToSource(doc);
+
+  const s = useStore.getState();
+  assert.ok(
+    (s.buffers["main.tex"] ?? "").includes("Paragrafo aggiunto in visuale."),
+    "l'edit visuale non è arrivato al buffer CRLF",
+  );
+  assert.equal(s.dirty["main.tex"], true, "un edit reale su CRLF non ha sporcato il documento");
+  const timer = autosaveTimers.get("main.tex");
+  assert.ok(timer !== undefined, "autosave non armato dopo un edit reale su CRLF");
   if (timer !== undefined) clearTimeout(timer);
   autosaveTimers.clear();
 });

@@ -15,7 +15,14 @@ import assert from "node:assert/strict";
 import { isLatexParseError, LatexParseError, latexToDoc } from "./latexToDoc.ts";
 import type { DocJson } from "./schema.ts";
 
-const FIXTURE = readFileSync(new URL("./fixtures/documento.tex", import.meta.url), "utf8");
+// La fixture letta dal disco viene normalizzata a LF: il test deve dipendere
+// dal CONTENUTO, non dal fine riga del worktree (CRLF su Windows con
+// core.autocrlf). Il comportamento su input CRLF vero è pinnato da un
+// golden dedicato in docToLatex.test.ts e dai test CRLF dello store.
+const FIXTURE = readFileSync(new URL("./fixtures/documento.tex", import.meta.url), "utf8").replace(
+  /\r\n/g,
+  "\n",
+);
 
 /** Nodi di un dato tipo, cercati ricorsivamente, in ordine di apparizione. */
 function blocchi(doc: DocJson, tipo: string): DocJson[] {
