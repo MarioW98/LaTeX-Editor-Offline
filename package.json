@@ -1,7 +1,7 @@
 {
   "name": "latex-editor-offline",
   "private": true,
-  "version": "0.2.0",
+  "version": "0.3.0",
   "type": "module",
   "description": "Offline-first LaTeX desktop editor built with Tauri 2, Rust, React and CodeMirror 6",
   "license": "MIT",
