@@ -269,15 +269,15 @@ jobs:
       group: publish-release
       cancel-in-progress: true
     steps:
-      # MU.2 — sul rilascio versionato servono gli script di generazione di
-      # latest.json: checkout e Node PRIMA del download degli artifact
-      # (il checkout ripulisce il workspace e cancellerebbe i file scaricati).
+      # MU.2/MU.2b — il rilascio gira con gli script del repository in
+      # OGNI modalità (collect-assets.mjs per la raccolta, make-latest.mjs
+      # per latest.json sui tag v*): checkout e Node PRIMA del download
+      # degli artifact (il checkout ripulisce il workspace e cancellerebbe
+      # i file scaricati).
       - name: Checkout repository (release scripts)
-        if: startsWith(github.ref, 'refs/tags/v')
         uses: actions/checkout@v4
 
       - name: Set up Node.js (release scripts)
-        if: startsWith(github.ref, 'refs/tags/v')
         uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -288,76 +288,16 @@ jobs:
           path: dist
           merge-multiple: true
 
+      # MU.2b — raccolta e nomi stabili come script Node testabile
+      # (scripts/collect-assets.mjs, test in scripts/collect-assets.test.mjs):
+      # copia da dist/ a assets/, elenco «Files to publish:» e, sui tag v*,
+      # completezza degli asset updater (errore unico che elenca tutti i
+      # mancanti). tauri v2 nomina l'updater macOS senza architettura
+      # (<productName>.app.tar.gz): la matrice compila macOS solo su Apple
+      # Silicon, quindi il nome stabile è sempre macos-aarch64.
       - name: Collect installer files (stable names)
         shell: bash
-        run: |
-          mkdir -p assets
-          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
-            # MU.2 — rilascio versionato: anche gli artifact updater firmati
-            # (.sig) e l'app macOS .app.tar.gz (l'updater NON usa il .dmg).
-            find dist -type f \
-              \( -name '*.msi' -o -name '*.msi.sig' -o -name '*.deb' \
-              -o -name '*.AppImage' -o -name '*.AppImage.sig' -o -name '*.dmg' \
-              -o -name '*.app.tar.gz' -o -name '*.app.tar.gz.sig' \) -exec cp {} assets/ \;
-          else
-            find dist -type f \
-              \( -name '*.msi' -o -name '*.deb' -o -name '*.AppImage' -o -name '*.dmg' \) -exec cp {} assets/ \;
-          fi
-          cd assets
-          # Publish under stable names (no version numbers) so the README and
-          # the manual can link each file directly and the link never breaks
-          # when the version changes: releases/download/latest/<name>.
-          for f in *.msi;      do [ -e "$f" ] && mv "$f" LaTeX-Editor-Offline-windows-x64.msi;   done
-          for f in *.deb;      do [ -e "$f" ] && mv "$f" LaTeX-Editor-Offline-linux-amd64.deb;     done
-          for f in *.AppImage; do [ -e "$f" ] && mv "$f" LaTeX-Editor-Offline-linux-amd64.AppImage; done
-          for f in *.dmg; do
-            [ -e "$f" ] || continue
-            case "$f" in
-              *aarch64*) mv "$f" LaTeX-Editor-Offline-macos-aarch64.dmg ;;
-              *x86_64*)  mv "$f" LaTeX-Editor-Offline-macos-x64.dmg ;;
-              *)         mv "$f" LaTeX-Editor-Offline-macos.dmg ;;
-            esac
-          done
-          # MU.2 — anche firme e artifact updater, affiancati ai rispettivi
-          # file con nomi stabili.
-          for f in *.msi.sig; do [ -e "$f" ] && mv "$f" LaTeX-Editor-Offline-windows-x64.msi.sig; done
-          for f in *.AppImage.sig; do [ -e "$f" ] && mv "$f" LaTeX-Editor-Offline-linux-amd64.AppImage.sig; done
-          for f in *.app.tar.gz; do
-            [ -e "$f" ] || continue
-            case "$f" in
-              *aarch64*) mv "$f" LaTeX-Editor-Offline-macos-aarch64.app.tar.gz ;;
-              *x86_64*)  mv "$f" LaTeX-Editor-Offline-macos-x64.app.tar.gz ;;
-              *)         mv "$f" LaTeX-Editor-Offline-macos.app.tar.gz ;;
-            esac
-          done
-          for f in *.app.tar.gz.sig; do
-            [ -e "$f" ] || continue
-            case "$f" in
-              *aarch64*) mv "$f" LaTeX-Editor-Offline-macos-aarch64.app.tar.gz.sig ;;
-              *x86_64*)  mv "$f" LaTeX-Editor-Offline-macos-x64.app.tar.gz.sig ;;
-              *)         mv "$f" LaTeX-Editor-Offline-macos.app.tar.gz.sig ;;
-            esac
-          done
-          cd ..
-          echo "Files to publish:"
-          ls -l assets
-          test -n "$(ls -A assets)"
-          # MU.2 — completezza degli asset updater nel rilascio versionato:
-          # se manca una piattaforma o una firma il job FALLISCE subito.
-          # (La matrice compila macOS solo su Apple Silicon: se un domani
-          # cambia, aggiornare questo elenco e UPDATER_PLATFORMS.)
-          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
-            for f in \
-              LaTeX-Editor-Offline-windows-x64.msi \
-              LaTeX-Editor-Offline-windows-x64.msi.sig \
-              LaTeX-Editor-Offline-linux-amd64.AppImage \
-              LaTeX-Editor-Offline-linux-amd64.AppImage.sig \
-              LaTeX-Editor-Offline-macos-aarch64.app.tar.gz \
-              LaTeX-Editor-Offline-macos-aarch64.app.tar.gz.sig
-            do
-              test -f "assets/$f" || { echo "::error::Asset updater mancante nel rilascio: $f"; exit 1; }
-            done
-          fi
+        run: node scripts/collect-assets.mjs --dist dist --assets assets --ref "$GITHUB_REF"
 
       - name: Extract release notes from the tag
         if: startsWith(github.ref, 'refs/tags/v')
