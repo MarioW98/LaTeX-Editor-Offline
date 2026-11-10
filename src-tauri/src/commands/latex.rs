@@ -11,7 +11,10 @@ use std::time::{Instant, SystemTime, UNIX_EPOCH};
 use crate::build_slot::{poll_action, OwnChild, PollAction};
 use crate::error::{AppError, AppResult};
 use crate::state::{AppState, BuildJob};
-use crate::toolchain::{choose_build_driver, BuildDriver, ToolDetection};
+use crate::toolchain::{
+    bib_need, build_phases, candidate_dirs, choose_build_driver, current_target_os, resolve_tool,
+    BibNeed, BuildDriver, Step, TargetOs, ToolDetection, ToolPaths,
+};
 use tauri::{AppHandle, Emitter, Manager};
 
 const LOG_CAP: usize = 5000;
@@ -22,6 +25,10 @@ pub struct ToolInfo {
     pub name: String,
     pub available: bool,
     pub version: String,
+    /// Dove la detection ha trovato il tool OLTRE il PATH di processo:
+    /// None = il PATH basta (available) oppure il tool non c'è. La barra di
+    /// stato può mostrarlo per diagnosticare subito un PATH obsoleto.
+    pub resolved_path: Option<String>,
 }
 
 #[derive(Serialize, Clone, Debug)]
@@ -84,8 +91,10 @@ fn hide_window(cmd: &mut Command) {
     }
 }
 
-fn probe(tool: &str) -> ToolInfo {
-    let mut cmd = Command::new(tool);
+/// Prima riga di `program --version` quando lo spawn riesce: è la versione
+/// mostrata in barra di stato.
+fn spawn_version(program: &str) -> Option<String> {
+    let mut cmd = Command::new(program);
     cmd.arg("--version")
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
@@ -94,19 +103,65 @@ fn probe(tool: &str) -> ToolInfo {
     match cmd.output() {
         Ok(out) if out.status.success() => {
             let text = String::from_utf8_lossy(&out.stdout);
-            let first = text.lines().next().unwrap_or("").trim().to_string();
-            ToolInfo {
+            Some(text.lines().next().unwrap_or("").trim().to_string())
+        }
+        _ => None,
+    }
+}
+
+/// Il probe di un tool: prima il PATH di processo; quando il PATH non lo
+/// raggiunge, le directory standard delle distribuzioni. Il percorso trovato
+/// torna in `resolved_path` — la barra di stato può indicare DOVE il tool è
+/// stato trovato, e gli spawn della build lo usano al posto del nome nudo.
+fn probe_with(tool: &str, dirs: &[PathBuf]) -> ToolInfo {
+    if let Some(version) = spawn_version(tool) {
+        return ToolInfo {
+            name: tool.into(),
+            available: true,
+            version,
+            resolved_path: None,
+        };
+    }
+    if let Some(path) = resolve_tool(tool, dirs) {
+        let resolved = path.to_string_lossy().into_owned();
+        if let Some(version) = spawn_version(&resolved) {
+            return ToolInfo {
                 name: tool.into(),
                 available: true,
-                version: first,
-            }
+                version,
+                resolved_path: Some(resolved),
+            };
         }
-        _ => ToolInfo {
-            name: tool.into(),
-            available: false,
-            version: String::new(),
-        },
     }
+    ToolInfo {
+        name: tool.into(),
+        available: false,
+        version: String::new(),
+        resolved_path: None,
+    }
+}
+
+/// Le directory dove cercare un tool quando il PATH di processo non lo
+/// raggiunge: le radici arrivano dall'ambiente (su Windows TeX Live sta
+/// sotto C:\texlive), l'ORDINE è quello deciso da `candidate_dirs`.
+fn search_dirs() -> Vec<PathBuf> {
+    match current_target_os() {
+        TargetOs::Windows => {
+            let local = std::env::var_os("LOCALAPPDATA").map(PathBuf::from);
+            let roaming = std::env::var_os("APPDATA").map(PathBuf::from);
+            candidate_dirs(
+                TargetOs::Windows,
+                local.as_deref(),
+                roaming.as_deref(),
+                Some(Path::new(r"C:\texlive")),
+            )
+        }
+        os => candidate_dirs(os, None, None, None),
+    }
+}
+
+fn probe(tool: &str) -> ToolInfo {
+    probe_with(tool, &search_dirs())
 }
 
 // Rilevazione MINIMALE per il gate di start_build (M0.7.1): si sondano con
@@ -115,18 +170,47 @@ fn probe(tool: &str) -> ToolInfo {
 // «distribuzione presente ma motore richiesto mancante». Mai bibtex/biber,
 // mai uno spawn usato come rilevazione: la mappa completa dei sei tool è
 // compito di detect_latex, per la UI.
-fn detect_for_build(requested: &str) -> ToolDetection {
+//
+// La stessa rilevazione riempie i percorsi risolti (risoluzione oltre il
+// PATH): la coppia (detection, paths) decide la build E guida i suoi spawn
+// con lo stesso dato, così un tool trovato oltre il PATH viene anche
+// eseguito dal suo percorso.
+fn detect_for_build(requested: &str) -> (ToolDetection, ToolPaths) {
+    detect_for_build_with(requested, &search_dirs())
+}
+
+fn detect_for_build_with(requested: &str, dirs: &[PathBuf]) -> (ToolDetection, ToolPaths) {
+    let latexmk = probe_with("latexmk", dirs);
+    let engine = probe_with(requested, dirs);
+    let mut paths = ToolPaths::default();
+    paths.set_resolved("latexmk", latexmk.resolved_path.clone());
+    paths.set_resolved(requested, engine.resolved_path.clone());
     let mut d = ToolDetection::default()
-        .with_engine("latexmk", probe("latexmk").available)
-        .with_engine(requested, probe(requested).available);
+        .with_engine("latexmk", latexmk.available)
+        .with_engine(requested, engine.available);
     if !d.latexmk && !d.any_engine() {
         for e in ["pdflatex", "xelatex", "lualatex"] {
             if e != requested {
-                d = d.with_engine(e, probe(e).available);
+                let info = probe_with(e, dirs);
+                paths.set_resolved(e, info.resolved_path.clone());
+                d = d.with_engine(e, info.available);
             }
         }
     }
-    d
+    (d, paths)
+}
+
+/// Probe di un tool per un passo di build: disponibile e il programma da
+/// eseguire — il percorso risolto quando la detection l'ha trovato oltre il
+/// PATH, altrimenti il nome.
+fn probe_program(name: &str) -> (bool, String) {
+    let info = probe(name);
+    (
+        info.available,
+        info.resolved_path
+            .clone()
+            .unwrap_or_else(|| name.to_string()),
+    )
 }
 
 #[tauri::command]
@@ -273,11 +357,6 @@ fn latexmk_args(engine: &str, main_file: &str, out_dir: &Path, shell_escape: boo
     a
 }
 
-enum Step {
-    Engine(String),           // program name; args built at run time
-    Bib(String, Vec<String>), // program + explicit args
-}
-
 #[tauri::command]
 pub async fn start_build(
     app: AppHandle,
@@ -315,6 +394,7 @@ pub async fn start_build(
     })
     .await
     .map_err(|e| AppError::Plain(format!("rilevazione strumenti non riuscita: {e}")))?;
+    let (detection, paths) = detection;
     let driver = choose_build_driver(&detection, &engine)?;
     let jobname = main_path
         .file_stem()
@@ -351,6 +431,7 @@ pub async fn start_build(
     let out_dir2 = out_dir.clone();
     let jobname2 = jobname.clone();
     let engine2 = decided_engine;
+    let paths2 = paths;
     let main_file2 = main_file.clone();
     let latexmk_mode = latexmk_used;
 
@@ -362,14 +443,14 @@ pub async fn start_build(
 
         // Queue of steps. In latexmk mode there is a single step; otherwise the
         // bibliography step (if any) is inserted dynamically after pass 1.
-        let mut phases: Vec<Step> = if latexmk_mode {
-            vec![Step::Bib(
-                "latexmk".into(),
-                latexmk_args(&engine2, &main_file2, &out_dir2, shell_escape),
-            )]
-        } else {
-            vec![Step::Engine(engine2.clone())]
-        };
+        // I programmi arrivano dai percorsi risolti: un tool trovato oltre il
+        // PATH parte dal suo percorso completo, non dal nome nudo.
+        let mut phases: Vec<Step> = build_phases(
+            latexmk_mode,
+            &engine2,
+            &paths2,
+            latexmk_args(&engine2, &main_file2, &out_dir2, shell_escape),
+        );
 
         let run_step = |program: &str,
                         args: &[String],
@@ -509,28 +590,36 @@ pub async fn start_build(
                 let aux = out_dir2.join(format!("{jobname2}.aux"));
                 let aux_txt = std::fs::read_to_string(&aux).unwrap_or_default();
                 let mut extra: Vec<Step> = Vec::new();
-                if aux_txt.contains("\\bibdata") && probe("bibtex").available {
-                    push_line(&app2, &lines2, "rilevata bibliografia BibTeX", "info");
-                    let aux_path = out_dir2.join(&jobname2).to_string_lossy().into_owned();
-                    extra.push(Step::Bib("bibtex".into(), vec![aux_path]));
-                } else if (aux_txt.contains("\\abx@aux")
-                    || out_dir2.join(format!("{jobname2}.bcf")).exists())
-                    && probe("biber").available
-                {
-                    push_line(
-                        &app2,
-                        &lines2,
-                        "rilevata bibliografia biblatex/biber",
-                        "info",
-                    );
-                    extra.push(Step::Bib(
-                        "biber".into(),
-                        vec![
-                            "--input-directory".into(),
-                            out_dir2.to_string_lossy().into_owned(),
-                            jobname2.clone(),
-                        ],
-                    ));
+                match bib_need(&aux_txt, out_dir2.join(format!("{jobname2}.bcf")).exists()) {
+                    Some(BibNeed::Bibtex) => {
+                        let (available, program) = probe_program("bibtex");
+                        if available {
+                            push_line(&app2, &lines2, "rilevata bibliografia BibTeX", "info");
+                            let aux_path =
+                                out_dir2.join(&jobname2).to_string_lossy().into_owned();
+                            extra.push(Step::Bib(program, vec![aux_path]));
+                        }
+                    }
+                    Some(BibNeed::Biber) => {
+                        let (available, program) = probe_program("biber");
+                        if available {
+                            push_line(
+                                &app2,
+                                &lines2,
+                                "rilevata bibliografia biblatex/biber",
+                                "info",
+                            );
+                            extra.push(Step::Bib(
+                                program,
+                                vec![
+                                    "--input-directory".into(),
+                                    out_dir2.to_string_lossy().into_owned(),
+                                    jobname2.clone(),
+                                ],
+                            ));
+                        }
+                    }
+                    None => {}
                 }
                 extra.push(Step::Engine(engine2.clone()));
                 extra.push(Step::Engine(engine2.clone()));
@@ -636,4 +725,76 @@ pub async fn read_pdf_bytes(root: String, main_file: String) -> AppResult<tauri:
     })
     .await
     .map_err(|e| AppError::Plain(format!("task failed: {e}")))?
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    // Directory temporanea unica per le fixture: pid + nanosecondi, così i
+    // test in parallelo non si toccano.
+    fn temp_root(tag: &str) -> PathBuf {
+        let base = std::env::temp_dir().join(format!(
+            "morsa-latex-{}-{}-{}",
+            tag,
+            std::process::id(),
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap_or_default()
+                .subsec_nanos()
+        ));
+        std::fs::create_dir_all(&base).unwrap();
+        base
+    }
+
+    // Il DISCRIMINANTE del probe: un tool presente SOLO in una candidate
+    // dir, con un nome che nessun sistema mette sul PATH — il probe sul
+    // PATH fallisce esattamente come con un PATH di processo vuoto o
+    // obsoleto, e la risoluzione lo recupera. È lo scenario del bug: l'app
+    // installata segnala «Nessuna distribuzione LaTeX trovata» mentre
+    // `pdflatex --version` funziona da cmd. Sulla detection PATH-only
+    // attuale questo test è ROSSO (prova nell'allegato della consegna).
+    #[cfg(unix)]
+    #[test]
+    fn probe_trova_un_tool_presente_solo_nelle_candidate_dirs() {
+        let root = temp_root("probe");
+        let bin = root.join("bin");
+        std::fs::create_dir_all(&bin).unwrap();
+        let exe = bin.join("morsa-probe-fixture");
+        std::fs::write(&exe, "#!/bin/sh\necho morsa-fixture 1.0\n").unwrap();
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&exe, std::fs::Permissions::from_mode(0o755)).unwrap();
+        }
+        let info = probe_with("morsa-probe-fixture", &[bin.clone()]);
+        assert!(
+            info.available,
+            "il tool nelle candidate dirs deve risultare disponibile anche \
+             quando il PATH di processo non lo contiene"
+        );
+        assert_eq!(
+            info.resolved_path.as_deref(),
+            Some(exe.to_str().unwrap()),
+            "resolved_path deve indicare DOVE il tool è stato trovato"
+        );
+        assert!(
+            info.version.contains("morsa-fixture"),
+            "la versione deve venire dallo spawn del percorso risolto: {}",
+            info.version
+        );
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    // Un tool assente dal PATH e da tutte le candidate dirs resta non
+    // disponibile: la risoluzione non inventa disponibilità.
+    #[test]
+    fn probe_lascia_non_disponibile_un_tool_assente_ovunque() {
+        let root = temp_root("assente");
+        let info = probe_with("morsa-assente-ovunque", &[root.clone()]);
+        assert!(!info.available);
+        assert!(info.resolved_path.is_none());
+        assert!(info.version.is_empty());
+        let _ = std::fs::remove_dir_all(&root);
+    }
 }
