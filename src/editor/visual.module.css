@@ -201,6 +201,37 @@
   font-family: inherit;
 }
 
+/* ---- chip matematici (M2): la resa KaTeX sostituisce il testo grezzo ---- */
+
+.visualContent :global(.chip-matematica) {
+  font-family: inherit;
+  background: transparent;
+  border: none;
+  padding: 0 2px;
+  color: var(--text);
+  white-space: normal;
+  user-select: all;
+}
+
+/* Il passaggio del mouse accenna al chip: il sorgente verbatim è nel tooltip. */
+.visualContent :global(.chip-matematica:hover) {
+  background: var(--panel2);
+  border-radius: 4px;
+}
+
+.visualContent :global(.chip-blocco.chip-matematica) {
+  text-align: center;
+  overflow-x: auto;
+  padding: 6px 10px;
+  user-select: all;
+}
+
+/* Nodo chip selezionato: la classe standard di ProseMirror, resa visibile. */
+.visualContent :global(.ProseMirror-selectednode) {
+  outline: 2px dashed var(--accent);
+  border-radius: 4px;
+}
+
 /* ---- banner d'errore del parse (modalità visuale rifiutata) ---- */
 
 .visualErrorBar {

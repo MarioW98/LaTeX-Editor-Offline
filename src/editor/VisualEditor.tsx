@@ -6,6 +6,7 @@ import { visualExtensions } from "./visualExtensions.ts";
 import { EditorToolbar } from "./EditorToolbar.tsx";
 import type { DocJson } from "../visual/schema.ts";
 import styles from "./visual.module.css";
+import "./katex.css";
 /**
  * M1 — Handle imperativo: EditorPane legge il documento live dell'editor
  * quando serve (toggle verso Sorgente, cambio tab), senza esporre l'istanza.

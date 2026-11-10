@@ -1,0 +1,6 @@
+/* M2 — CSS di KaTeX per la resa dei chip matematici nella vista visuale.
+   Vite risolve l'@import e bundlesa CSS e font (59 file woff/woff2/ttf) in
+   dist/assets: nessuna risorsa remota, l'app resta completamente offline.
+   Il file esiste come wrapper perché i test node stubbano gli import .css
+   con percorsi relativi (katex non esporta il CSS dalle sue «exports»). */
+@import "katex/dist/katex.min.css";

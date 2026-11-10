@@ -1,5 +1,6 @@
 import { Node, mergeAttributes } from "@tiptap/core";
-import type { Extensions } from "@tiptap/core";
+import type { Extensions, NodeViewRendererProps } from "@tiptap/core";
+import type { NodeView } from "@tiptap/pm/view";
 import Document from "@tiptap/extension-document";
 import Paragraph from "@tiptap/extension-paragraph";
 import Text from "@tiptap/extension-text";
@@ -13,6 +14,66 @@ import OrderedList from "@tiptap/extension-ordered-list";
 import ListItem from "@tiptap/extension-list-item";
 import Blockquote from "@tiptap/extension-blockquote";
 import History from "@tiptap/extension-history";
+import { estraiMatematica, renderMatematica } from "../visual/math.ts";
+
+/**
+ * M2 — Vista DOM di un chip grezzo (inline o blocco).
+ *
+ * Se la slice VERBATIM è matematica che KaTeX sa rendere, il DOM mostra la
+ * formula RESA: la resa vive SOLO nel DOM (title col sorgente verbatim al
+ * passaggio del mouse). In ogni altro caso — chip non matematico, oppure
+ * matematica che KaTeX rifiuta — il chip grezzo di sempre: monospace, bordo,
+ * slice tale e quale.
+ *
+ * renderHTML e il modello NON cambiano: la serializzazione (clipboard, HTML)
+ * passa sempre dal renderHTML statico di M1, il round-trip byte per byte
+ * resta quello che era. Il nodo resta atomico e read-only: qui dentro non si
+ * tocca il documento, si mostra.
+ */
+function vistaChipGrezzo(
+  tag: "code" | "pre",
+  attributoSelettore: string,
+  classeGrezzo: string,
+): (props: NodeViewRendererProps) => NodeView {
+  return ({ node }) => {
+    const latex = typeof node.attrs.latex === "string" ? node.attrs.latex : "";
+    const dom = document.createElement(tag);
+    dom.setAttribute(attributoSelettore, "true");
+
+    const matematica = estraiMatematica(latex);
+    if (matematica !== null) {
+      const esito = renderMatematica(matematica.tex, matematica.display);
+      if ("html" in esito) {
+        dom.className = `${classeGrezzo} chip-matematica`;
+        dom.setAttribute("data-matematica", "true");
+        // Il sorgente verbatim resta raggiungibile: tooltip al passaggio del
+        // mouse (la modifica avviene in Sorgente, come per ogni chip).
+        dom.setAttribute("title", latex);
+        dom.innerHTML = esito.html;
+        return conSelezione(dom);
+      }
+    }
+    // Fallback: identico al renderHTML statico (stesso elemento, stessi
+    // attributi, stessa slice come testo).
+    dom.className = classeGrezzo;
+    dom.textContent = latex;
+    return conSelezione(dom);
+  };
+}
+
+/** Nodo selezionato: la classe standard di ProseMirror, come faceva il
+ * renderHTML statico prima delle node view (nessun passo indietro). */
+function conSelezione(dom: HTMLElement): NodeView {
+  return {
+    dom,
+    selectNode() {
+      dom.classList.add("ProseMirror-selectednode");
+    },
+    deselectNode() {
+      dom.classList.remove("ProseMirror-selectednode");
+    },
+  };
+}
 
 /**
  * M1 — Extension TipTap della vista visuale.
@@ -85,7 +146,8 @@ const Postambolo = Node.create({
   },
 });
 
-/** Chip di blocco LaTeX grezzo (equation, tikzpicture, commenti isolati…). */
+/** Chip di blocco LaTeX grezzo (equation, tikzpicture, commenti isolati…):
+ *  la matematica display (ambienti amsmath, \[...\], $$...$$) si vede resa. */
 const BloccoGrezzo = Node.create({
   name: "rawBlock",
   group: "block",
@@ -104,9 +166,13 @@ const BloccoGrezzo = Node.create({
       node.attrs.latex as string,
     ];
   },
+  addNodeView() {
+    return vistaChipGrezzo("pre", "data-raw-blocco", "chip-blocco");
+  },
 });
 
-/** Chip inline LaTeX grezzo ($...$, \footnote, \ref…), read-only. */
+/** Chip inline LaTeX grezzo ($...$, \footnote, \ref…), read-only:
+ *  la matematica inline ($...$, \(...\)) si vede resa. */
 const InlineGrezzo = Node.create({
   name: "rawInline",
   inline: true,
@@ -124,6 +190,9 @@ const InlineGrezzo = Node.create({
       mergeAttributes({ "data-raw": "true" }, { class: "chip-inline" }),
       node.attrs.latex as string,
     ];
+  },
+  addNodeView() {
+    return vistaChipGrezzo("code", "data-raw", "chip-inline");
   },
 });
 
