@@ -2,7 +2,7 @@
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "LaTeX Editor Offline",
   "mainBinaryName": "latex-editor-offline",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "identifier": "com.latexeditor.offline",
   "build": {
     "beforeDevCommand": "npm run dev",

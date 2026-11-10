@@ -1,0 +1,1008 @@
+From 8a3b78af65dfc58c46bea22cdc9f04d04b3c0e25 Mon Sep 17 00:00:00 2001
+From: MarioW98 <countryducati@me.com>
+Date: Tue, 10 Nov 2026 11:18:52 +0000
+Subject: [PATCH] fix(detection): risoluzione strumenti oltre il PATH di
+ processo
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+MORSA — scenario del maintainer (Windows, app installata via MSI):
+«Nessuna distribuzione LaTeX trovata» nella barra di stato mentre
+`pdflatex --version` funziona da cmd: il PATH del processo app può
+essere obsoleto o incompleto (cache ambiente di Explorer, contesto di
+lancio). La detection PATH-only non basta.
+
+toolchain.rs (logica pura, std-only):
+- TargetOs + candidate_dirs(os, localappdata, appdata, texlive_root):
+  le directory standard delle distribuzioni in ordine deterministico —
+  MiKTeX per-utente (LOCALAPPDATA), poi roaming (APPDATA), poi di
+  sistema (C:\Program Files\MiKTeX\miktex\bin\x64), poi TeX Live (anno
+  più recente prima, bin\windows prima di bin\win32); su macOS
+  /Library/TeX/texbin e /usr/local/bin; su Linux /usr/bin e
+  /usr/local/bin. Radici come parametri: l'ordine si verifica su
+  qualunque host di test.
+- resolve_tool(tool, dirs): l'eseguibile («name.exe» su Windows) nella
+  prima directory che lo contiene; None = assente ovunque. La variante
+  con suffisso esplicito rende verificabile il ramo .exe da qualunque
+  host.
+- ToolPaths: i percorsi risolti degli strumenti della build;
+  program(name) ritorna il percorso quando risolto, altrimenti il nome.
+- Step e build_phases qui (la logica dei passi della build è pura):
+  build_phases(latexmk_mode, engine, paths, latexmk_args) produce i
+  passi col PERCORSO risolto — CRITICO: un tool trovato oltre il PATH
+  ed eseguito col nome nudo fallirebbe comunque allo spawn, quindi la
+  detection troverebbe il tool e la compilazione fallirebbe comunque.
+- bib_need(aux, bcf) pura: \bibdata → BibTeX, altrimenti biber
+  (\abx@aux nell'aux o file .bcf): la selezione del passo bibliografico
+  diventa testabile.
+
+latex.rs:
+- ToolInfo.resolved_path: Option<String> (None = il PATH basta o il
+  tool non c'è): la barra di stato può mostrare DOVE è stato trovato
+  ogni strumento, per diagnosticare subito il prossimo caso del genere.
+- probe_with(tool, dirs): il probe prova il PATH di processo e, se non
+  raggiunge il tool, le candidate dirs (spawn --version anche sul
+  percorso risolto). search_dirs() è il ponte verso l'ambiente reale
+  (LOCALAPPDATA/APPDATA, C:\texlive su Windows). detect_latex usa il
+  stesso probe: i sei tool arrivano alla UI col percorso risolto.
+- detect_for_build → (ToolDetection, ToolPaths): la rilevazione minima
+  M0.7.1 ora riempie anche i percorsi; start_build li passa al monitor
+  e le fasi nascono da build_phases. Il passo bibliografico usa
+  probe_program → Step::Bib col percorso risolto di bibtex/biber.
+- Messaggi utente invariati; nessun cambiamento UI (il campo opzionale
+  arriva nel payload IPC di detect_latex).
+
+Test (toolchain.rs 6 → 13, latex.rs +2):
+- candidate_dirs: ordine deterministico (utente → roaming → sistema;
+  macOS e Linux), ripetizione stabile; TeX Live anno più recente prima
+  e bin\windows prima di bin\win32, dir senza bin e file spuri esclusi.
+- resolve_tool: vince la prima directory che contiene il tool; ramo
+  .exe; tool assente ovunque → None.
+- DISCRIMINANTE: un tool presente in una candidate dir MiKTeX si trova
+  anche quando il PATH di processo non lo contiene — ROSSO contro la
+  detection PATH-only attuale (prova stand-alone con PATH simulato
+  vuoto nell'allegato della consegna: assert fallito su probe), VERDE
+  dopo la modifica.
+- CRITICO spawn: ToolPaths.program e build_phases ritornano il percorso
+  risolto, mai il nome nudo quando risolto; catena completa
+  detection → percorsi → fasi verificata.
+- bib_need: i marker decidono il passo (\bibdata vince, il file .bcf
+  basta, nessun marker → None).
+- latex.rs: il probe trova un tool presente SOLO nelle candidate dirs
+  (fixture eseguibile fuori dal PATH) con resolved_path e versione
+  presa dallo spawn del percorso; un tool assente ovunque resta non
+  disponibile.
+
+Prove locali (sandbox senza GTK/webkit dev e senza root): rustc --test
+standalone su toolchain.rs 13/13 verdi; harness end-to-end che include
+il toolchain.rs reale e replica le funzioni di latex.rs 18/18 verdi;
+latex.rs senza errori di parsing; tsc --noEmit verde; npm test 184/184
+verde; porte 5-6 (cargo test/clippy) aperte dalla CI su
+ubuntu/windows/macos come le altre sei porte del gate.
+---
+ src-tauri/src/commands/latex.rs | 265 ++++++++++++----
+ src-tauri/src/toolchain.rs      | 526 +++++++++++++++++++++++++++++++-
+ 2 files changed, 735 insertions(+), 56 deletions(-)
+
+diff --git a/src-tauri/src/commands/latex.rs b/src-tauri/src/commands/latex.rs
+index 42823df..f1860db 100644
+--- a/src-tauri/src/commands/latex.rs
++++ b/src-tauri/src/commands/latex.rs
+@@ -11,7 +11,10 @@ use std::time::{Instant, SystemTime, UNIX_EPOCH};
+ use crate::build_slot::{poll_action, OwnChild, PollAction};
+ use crate::error::{AppError, AppResult};
+ use crate::state::{AppState, BuildJob};
+-use crate::toolchain::{choose_build_driver, BuildDriver, ToolDetection};
++use crate::toolchain::{
++    bib_need, build_phases, candidate_dirs, choose_build_driver, current_target_os, resolve_tool,
++    BibNeed, BuildDriver, Step, TargetOs, ToolDetection, ToolPaths,
++};
+ use tauri::{AppHandle, Emitter, Manager};
+ 
+ const LOG_CAP: usize = 5000;
+@@ -22,6 +25,10 @@ pub struct ToolInfo {
+     pub name: String,
+     pub available: bool,
+     pub version: String,
++    /// Dove la detection ha trovato il tool OLTRE il PATH di processo:
++    /// None = il PATH basta (available) oppure il tool non c'è. La barra di
++    /// stato può mostrarlo per diagnosticare subito un PATH obsoleto.
++    pub resolved_path: Option<String>,
+ }
+ 
+ #[derive(Serialize, Clone, Debug)]
+@@ -84,8 +91,10 @@ fn hide_window(cmd: &mut Command) {
+     }
+ }
+ 
+-fn probe(tool: &str) -> ToolInfo {
+-    let mut cmd = Command::new(tool);
++/// Prima riga di `program --version` quando lo spawn riesce: è la versione
++/// mostrata in barra di stato.
++fn spawn_version(program: &str) -> Option<String> {
++    let mut cmd = Command::new(program);
+     cmd.arg("--version")
+         .stdin(Stdio::null())
+         .stdout(Stdio::piped())
+@@ -94,39 +103,114 @@ fn probe(tool: &str) -> ToolInfo {
+     match cmd.output() {
+         Ok(out) if out.status.success() => {
+             let text = String::from_utf8_lossy(&out.stdout);
+-            let first = text.lines().next().unwrap_or("").trim().to_string();
+-            ToolInfo {
++            Some(text.lines().next().unwrap_or("").trim().to_string())
++        }
++        _ => None,
++    }
++}
++
++/// Il probe di un tool: prima il PATH di processo; quando il PATH non lo
++/// raggiunge, le directory standard delle distribuzioni. Il percorso trovato
++/// torna in `resolved_path` — la barra di stato può indicare DOVE il tool è
++/// stato trovato, e gli spawn della build lo usano al posto del nome nudo.
++fn probe_with(tool: &str, dirs: &[PathBuf]) -> ToolInfo {
++    if let Some(version) = spawn_version(tool) {
++        return ToolInfo {
++            name: tool.into(),
++            available: true,
++            version,
++            resolved_path: None,
++        };
++    }
++    if let Some(path) = resolve_tool(tool, dirs) {
++        let resolved = path.to_string_lossy().into_owned();
++        if let Some(version) = spawn_version(&resolved) {
++            return ToolInfo {
+                 name: tool.into(),
+                 available: true,
+-                version: first,
+-            }
++                version,
++                resolved_path: Some(resolved),
++            };
+         }
+-        _ => ToolInfo {
+-            name: tool.into(),
+-            available: false,
+-            version: String::new(),
+-        },
++    }
++    ToolInfo {
++        name: tool.into(),
++        available: false,
++        version: String::new(),
++        resolved_path: None,
++    }
++}
++
++/// Le directory dove cercare un tool quando il PATH di processo non lo
++/// raggiunge: le radici arrivano dall'ambiente (su Windows TeX Live sta
++/// sotto C:\texlive), l'ORDINE è quello deciso da `candidate_dirs`.
++fn search_dirs() -> Vec<PathBuf> {
++    match current_target_os() {
++        TargetOs::Windows => {
++            let local = std::env::var_os("LOCALAPPDATA").map(PathBuf::from);
++            let roaming = std::env::var_os("APPDATA").map(PathBuf::from);
++            candidate_dirs(
++                TargetOs::Windows,
++                local.as_deref(),
++                roaming.as_deref(),
++                Some(Path::new(r"C:\texlive")),
++            )
++        }
++        os => candidate_dirs(os, None, None, None),
+     }
+ }
+ 
++fn probe(tool: &str) -> ToolInfo {
++    probe_with(tool, &search_dirs())
++}
++
+ // Rilevazione MINIMALE per il gate di start_build (M0.7.1): si sondano con
+ // `probe` solo latexmk e il motore richiesto; gli altri motori SOLO se
+ // entrambi mancano, per distinguere «nessuna distribuzione» da
+ // «distribuzione presente ma motore richiesto mancante». Mai bibtex/biber,
+ // mai uno spawn usato come rilevazione: la mappa completa dei sei tool è
+ // compito di detect_latex, per la UI.
+-fn detect_for_build(requested: &str) -> ToolDetection {
++//
++// La stessa rilevazione riempie i percorsi risolti (risoluzione oltre il
++// PATH): la coppia (detection, paths) decide la build E guida i suoi spawn
++// con lo stesso dato, così un tool trovato oltre il PATH viene anche
++// eseguito dal suo percorso.
++fn detect_for_build(requested: &str) -> (ToolDetection, ToolPaths) {
++    detect_for_build_with(requested, &search_dirs())
++}
++
++fn detect_for_build_with(requested: &str, dirs: &[PathBuf]) -> (ToolDetection, ToolPaths) {
++    let latexmk = probe_with("latexmk", dirs);
++    let engine = probe_with(requested, dirs);
++    let mut paths = ToolPaths::default();
++    paths.set_resolved("latexmk", latexmk.resolved_path.clone());
++    paths.set_resolved(requested, engine.resolved_path.clone());
+     let mut d = ToolDetection::default()
+-        .with_engine("latexmk", probe("latexmk").available)
+-        .with_engine(requested, probe(requested).available);
++        .with_engine("latexmk", latexmk.available)
++        .with_engine(requested, engine.available);
+     if !d.latexmk && !d.any_engine() {
+         for e in ["pdflatex", "xelatex", "lualatex"] {
+             if e != requested {
+-                d = d.with_engine(e, probe(e).available);
++                let info = probe_with(e, dirs);
++                paths.set_resolved(e, info.resolved_path.clone());
++                d = d.with_engine(e, info.available);
+             }
+         }
+     }
+-    d
++    (d, paths)
++}
++
++/// Probe di un tool per un passo di build: disponibile e il programma da
++/// eseguire — il percorso risolto quando la detection l'ha trovato oltre il
++/// PATH, altrimenti il nome.
++fn probe_program(name: &str) -> (bool, String) {
++    let info = probe(name);
++    (
++        info.available,
++        info.resolved_path
++            .clone()
++            .unwrap_or_else(|| name.to_string()),
++    )
+ }
+ 
+ #[tauri::command]
+@@ -273,11 +357,6 @@ fn latexmk_args(engine: &str, main_file: &str, out_dir: &Path, shell_escape: boo
+     a
+ }
+ 
+-enum Step {
+-    Engine(String),           // program name; args built at run time
+-    Bib(String, Vec<String>), // program + explicit args
+-}
+-
+ #[tauri::command]
+ pub async fn start_build(
+     app: AppHandle,
+@@ -315,6 +394,7 @@ pub async fn start_build(
+     })
+     .await
+     .map_err(|e| AppError::Plain(format!("rilevazione strumenti non riuscita: {e}")))?;
++    let (detection, paths) = detection;
+     let driver = choose_build_driver(&detection, &engine)?;
+     let jobname = main_path
+         .file_stem()
+@@ -351,6 +431,7 @@ pub async fn start_build(
+     let out_dir2 = out_dir.clone();
+     let jobname2 = jobname.clone();
+     let engine2 = decided_engine;
++    let paths2 = paths;
+     let main_file2 = main_file.clone();
+     let latexmk_mode = latexmk_used;
+ 
+@@ -362,14 +443,14 @@ pub async fn start_build(
+ 
+         // Queue of steps. In latexmk mode there is a single step; otherwise the
+         // bibliography step (if any) is inserted dynamically after pass 1.
+-        let mut phases: Vec<Step> = if latexmk_mode {
+-            vec![Step::Bib(
+-                "latexmk".into(),
+-                latexmk_args(&engine2, &main_file2, &out_dir2, shell_escape),
+-            )]
+-        } else {
+-            vec![Step::Engine(engine2.clone())]
+-        };
++        // I programmi arrivano dai percorsi risolti: un tool trovato oltre il
++        // PATH parte dal suo percorso completo, non dal nome nudo.
++        let mut phases: Vec<Step> = build_phases(
++            latexmk_mode,
++            &engine2,
++            &paths2,
++            latexmk_args(&engine2, &main_file2, &out_dir2, shell_escape),
++        );
+ 
+         let run_step = |program: &str,
+                         args: &[String],
+@@ -509,28 +590,36 @@ pub async fn start_build(
+                 let aux = out_dir2.join(format!("{jobname2}.aux"));
+                 let aux_txt = std::fs::read_to_string(&aux).unwrap_or_default();
+                 let mut extra: Vec<Step> = Vec::new();
+-                if aux_txt.contains("\\bibdata") && probe("bibtex").available {
+-                    push_line(&app2, &lines2, "rilevata bibliografia BibTeX", "info");
+-                    let aux_path = out_dir2.join(&jobname2).to_string_lossy().into_owned();
+-                    extra.push(Step::Bib("bibtex".into(), vec![aux_path]));
+-                } else if (aux_txt.contains("\\abx@aux")
+-                    || out_dir2.join(format!("{jobname2}.bcf")).exists())
+-                    && probe("biber").available
+-                {
+-                    push_line(
+-                        &app2,
+-                        &lines2,
+-                        "rilevata bibliografia biblatex/biber",
+-                        "info",
+-                    );
+-                    extra.push(Step::Bib(
+-                        "biber".into(),
+-                        vec![
+-                            "--input-directory".into(),
+-                            out_dir2.to_string_lossy().into_owned(),
+-                            jobname2.clone(),
+-                        ],
+-                    ));
++                match bib_need(&aux_txt, out_dir2.join(format!("{jobname2}.bcf")).exists()) {
++                    Some(BibNeed::Bibtex) => {
++                        let (available, program) = probe_program("bibtex");
++                        if available {
++                            push_line(&app2, &lines2, "rilevata bibliografia BibTeX", "info");
++                            let aux_path =
++                                out_dir2.join(&jobname2).to_string_lossy().into_owned();
++                            extra.push(Step::Bib(program, vec![aux_path]));
++                        }
++                    }
++                    Some(BibNeed::Biber) => {
++                        let (available, program) = probe_program("biber");
++                        if available {
++                            push_line(
++                                &app2,
++                                &lines2,
++                                "rilevata bibliografia biblatex/biber",
++                                "info",
++                            );
++                            extra.push(Step::Bib(
++                                program,
++                                vec![
++                                    "--input-directory".into(),
++                                    out_dir2.to_string_lossy().into_owned(),
++                                    jobname2.clone(),
++                                ],
++                            ));
++                        }
++                    }
++                    None => {}
+                 }
+                 extra.push(Step::Engine(engine2.clone()));
+                 extra.push(Step::Engine(engine2.clone()));
+@@ -637,3 +726,75 @@ pub async fn read_pdf_bytes(root: String, main_file: String) -> AppResult<tauri:
+     .await
+     .map_err(|e| AppError::Plain(format!("task failed: {e}")))?
+ }
++
++#[cfg(test)]
++mod tests {
++    use super::*;
++    use std::time::{SystemTime, UNIX_EPOCH};
++
++    // Directory temporanea unica per le fixture: pid + nanosecondi, così i
++    // test in parallelo non si toccano.
++    fn temp_root(tag: &str) -> PathBuf {
++        let base = std::env::temp_dir().join(format!(
++            "morsa-latex-{}-{}-{}",
++            tag,
++            std::process::id(),
++            SystemTime::now()
++                .duration_since(UNIX_EPOCH)
++                .unwrap_or_default()
++                .subsec_nanos()
++        ));
++        std::fs::create_dir_all(&base).unwrap();
++        base
++    }
++
++    // Il DISCRIMINANTE del probe: un tool presente SOLO in una candidate
++    // dir, con un nome che nessun sistema mette sul PATH — il probe sul
++    // PATH fallisce esattamente come con un PATH di processo vuoto o
++    // obsoleto, e la risoluzione lo recupera. È lo scenario del bug: l'app
++    // installata segnala «Nessuna distribuzione LaTeX trovata» mentre
++    // `pdflatex --version` funziona da cmd. Sulla detection PATH-only
++    // attuale questo test è ROSSO (prova nell'allegato della consegna).
++    #[cfg(unix)]
++    #[test]
++    fn probe_trova_un_tool_presente_solo_nelle_candidate_dirs() {
++        let root = temp_root("probe");
++        let bin = root.join("bin");
++        std::fs::create_dir_all(&bin).unwrap();
++        let exe = bin.join("morsa-probe-fixture");
++        std::fs::write(&exe, "#!/bin/sh\necho morsa-fixture 1.0\n").unwrap();
++        {
++            use std::os::unix::fs::PermissionsExt;
++            std::fs::set_permissions(&exe, std::fs::Permissions::from_mode(0o755)).unwrap();
++        }
++        let info = probe_with("morsa-probe-fixture", &[bin.clone()]);
++        assert!(
++            info.available,
++            "il tool nelle candidate dirs deve risultare disponibile anche \
++             quando il PATH di processo non lo contiene"
++        );
++        assert_eq!(
++            info.resolved_path.as_deref(),
++            Some(exe.to_str().unwrap()),
++            "resolved_path deve indicare DOVE il tool è stato trovato"
++        );
++        assert!(
++            info.version.contains("morsa-fixture"),
++            "la versione deve venire dallo spawn del percorso risolto: {}",
++            info.version
++        );
++        let _ = std::fs::remove_dir_all(&root);
++    }
++
++    // Un tool assente dal PATH e da tutte le candidate dirs resta non
++    // disponibile: la risoluzione non inventa disponibilità.
++    #[test]
++    fn probe_lascia_non_disponibile_un_tool_assente_ovunque() {
++        let root = temp_root("assente");
++        let info = probe_with("morsa-assente-ovunque", &[root.clone()]);
++        assert!(!info.available);
++        assert!(info.resolved_path.is_none());
++        assert!(info.version.is_empty());
++        let _ = std::fs::remove_dir_all(&root);
++    }
++}
+diff --git a/src-tauri/src/toolchain.rs b/src-tauri/src/toolchain.rs
+index 3c2013d..feb3e92 100644
+--- a/src-tauri/src/toolchain.rs
++++ b/src-tauri/src/toolchain.rs
+@@ -1,7 +1,8 @@
+-//! Scelta del motore di compilazione a partire dalla rilevazione strumenti,
+-//! estratta come logica pura (nessun processo, nessun Tauri) così la
+-//! decisione si testa deterministicamente con plain `cargo test`, allo
+-//! stesso modo di `build_slot`.
++//! Scelta del motore di compilazione e risoluzione degli strumenti a
++//! partire dalla rilevazione, estratte come logica pura (nessun processo,
++//! nessun Tauri; l'unico I/O è la lettura deterministica del filesystem per
++//! le directory di TeX Live) così la decisione si testa deterministicamente
++//! con plain `cargo test`, allo stesso modo di `build_slot`.
+ //!
+ //! Contratto (M0.7.1):
+ //! - `choose_build_driver(detection, requested)` decide CHE COSA guida la
+@@ -18,6 +19,22 @@
+ //! - `ToolchainProblem::user_message()` è il testo che arriva all'utente
+ //!   (via `AppError::Toolchain`): azionabile, in italiano, punta alla
+ //!   sezione Requisiti del manuale. Non è mai un errore `io` grezzo.
++//!
++//! Contratto (risoluzione oltre il PATH di processo):
++//! - il probe sul PATH di processo può non bastare: il PATH dell'app può
++//!   essere obsoleto o incompleto (cache ambiente di Explorer, contesto di
++//!   lancio) mentre la distribuzione è regolarmente installata. Quando il
++//!   PATH non raggiunge il tool, `candidate_dirs` elenca le directory
++//!   standard delle distribuzioni e `resolve_tool` individua l'eseguibile
++//!   nella prima directory che lo contiene. L'ORDINE è deterministico e le
++//!   radici arrivano come parametri, così l'elenco si verifica su
++//!   qualunque host di test;
++//! - il percorso trovato finisce in `ToolPaths` e guida GLI SPAWN della
++//!   build: `build_phases` produce i passi col percorso risolto, perché un
++//!   tool trovato oltre il PATH ed eseguito col nome nudo fallirebbe
++//!   comunque allo spawn.
++
++use std::path::{Path, PathBuf};
+ 
+ /// Disponibilità dei soli tool che decidono la compilazione.
+ #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+@@ -133,9 +150,239 @@ pub fn choose_build_driver(
+     }
+ }
+ 
++/// Il sistema per cui costruire l'elenco delle directory candidate:
++/// parametro esplicito così l'ordine è verificabile su qualunque host.
++#[derive(Debug, Clone, Copy, PartialEq, Eq)]
++pub enum TargetOs {
++    Windows,
++    MacOS,
++    Linux,
++}
++
++/// Il sistema corrente, per l'uso reale della risoluzione.
++pub fn current_target_os() -> TargetOs {
++    if cfg!(windows) {
++        TargetOs::Windows
++    } else if cfg!(target_os = "macos") {
++        TargetOs::MacOS
++    } else {
++        TargetOs::Linux
++    }
++}
++
++/// Directory standard delle distribuzioni LaTeX, in ordine di preferenza
++/// deterministico. Pura rispetto alle radici: le directory utente arrivano
++/// come parametri e TeX Live viene scandito solo quando `texlive_root` è
++/// presente (su Windows è `C:\texlive`).
++///
++/// Windows: MiKTeX per-utente (LOCALAPPDATA), poi per-utente roaming
++/// (APPDATA), poi l'installazione di sistema in Program Files, poi TeX Live
++/// (anno più recente prima, `bin\windows` prima di `bin\win32`).
++/// macOS: texbin di sistema, poi /usr/local/bin.
++/// Linux: /usr/bin, poi /usr/local/bin.
++pub fn candidate_dirs(
++    os: TargetOs,
++    localappdata: Option<&Path>,
++    appdata: Option<&Path>,
++    texlive_root: Option<&Path>,
++) -> Vec<PathBuf> {
++    let mut dirs = match os {
++        TargetOs::Windows => {
++            let mut v = Vec::new();
++            if let Some(local) = localappdata {
++                v.push(
++                    local
++                        .join("Programs")
++                        .join("MiKTeX")
++                        .join("miktex")
++                        .join("bin")
++                        .join("x64"),
++                );
++            }
++            if let Some(roaming) = appdata {
++                v.push(
++                    roaming
++                        .join("Programs")
++                        .join("MiKTeX")
++                        .join("miktex")
++                        .join("bin")
++                        .join("x64"),
++                );
++            }
++            v.push(PathBuf::from(r"C:\Program Files\MiKTeX\miktex\bin\x64"));
++            v
++        }
++        TargetOs::MacOS => vec![
++            PathBuf::from("/Library/TeX/texbin"),
++            PathBuf::from("/usr/local/bin"),
++        ],
++        TargetOs::Linux => vec![PathBuf::from("/usr/bin"), PathBuf::from("/usr/local/bin")],
++    };
++    if let Some(root) = texlive_root {
++        dirs.extend(texlive_bin_dirs(root));
++    }
++    dirs
++}
++
++/// Le directory `bin` di TeX Live sotto `texlive_root` (es. `C:\texlive`):
++/// un ramo per ogni versione installata, anno più recente prima, prima
++/// tutte le `bin\windows` poi tutte le `bin\win32`. L'ordinamento per nome
++/// decrescente è deterministico e per i nomi-anno coincide col più recente
++/// prima.
++fn texlive_bin_dirs(texlive_root: &Path) -> Vec<PathBuf> {
++    let mut versions: Vec<String> = match std::fs::read_dir(texlive_root) {
++        Ok(entries) => entries
++            .filter_map(|e| e.ok())
++            .filter(|e| e.file_type().map(|t| t.is_dir()).unwrap_or(false))
++            .filter_map(|e| e.file_name().into_string().ok())
++            .collect(),
++        Err(_) => Vec::new(),
++    };
++    versions.sort_unstable();
++    versions.reverse();
++    let mut dirs = Vec::new();
++    for kind in ["windows", "win32"] {
++        for version in &versions {
++            let bin = texlive_root.join(version).join("bin").join(kind);
++            if bin.is_dir() {
++                dirs.push(bin);
++            }
++        }
++    }
++    dirs
++}
++
++/// Il suffisso dell'eseguibile sul sistema corrente.
++pub fn exe_suffix() -> &'static str {
++    if cfg!(windows) {
++        ".exe"
++    } else {
++        ""
++    }
++}
++
++/// Percorso completo dell'eseguibile cercandolo in `dirs` in ordine di
++/// preferenza: vince la prima directory che lo contiene. `None` = il tool
++/// non è presente in nessuna candidate dir.
++pub fn resolve_tool(tool: &str, dirs: &[PathBuf]) -> Option<PathBuf> {
++    resolve_tool_with_suffix(tool, dirs, exe_suffix())
++}
++
++/// Variante con suffisso esplicito: il ramo «name.exe» di Windows resta
++/// verificabile da qualunque host di test.
++pub fn resolve_tool_with_suffix(tool: &str, dirs: &[PathBuf], suffix: &str) -> Option<PathBuf> {
++    for dir in dirs {
++        let candidate = dir.join(format!("{tool}{suffix}"));
++        if is_executable_file(&candidate) {
++            return Some(candidate);
++        }
++    }
++    None
++}
++
++/// Un file regolare eseguibile: su Unix conta il bit di esecuzione.
++fn is_executable_file(path: &Path) -> bool {
++    match std::fs::metadata(path) {
++        Ok(meta) if meta.is_file() => {
++            #[cfg(unix)]
++            {
++                use std::os::unix::fs::PermissionsExt;
++                meta.permissions().mode() & 0o111 != 0
++            }
++            #[cfg(not(unix))]
++            {
++                true
++            }
++        }
++        _ => false,
++    }
++}
++
++/// Percorsi risolti degli strumenti che guidano la build: `Some` = il tool
++/// non è raggiungibile dal PATH di processo e va eseguito col percorso
++/// completo trovato nelle candidate dirs; `None` = il nome basta.
++#[derive(Debug, Clone, Default, PartialEq, Eq)]
++pub struct ToolPaths {
++    pub latexmk: Option<String>,
++    pub pdflatex: Option<String>,
++    pub xelatex: Option<String>,
++    pub lualatex: Option<String>,
++}
++
++impl ToolPaths {
++    /// Il programma da passare allo spawn per `name`: il percorso risolto
++    /// quando c'è, altrimenti il nome (raggiungibile dal PATH di processo).
++    pub fn program(&self, name: &str) -> String {
++        let resolved = match name {
++            "latexmk" => self.latexmk.clone(),
++            "pdflatex" => self.pdflatex.clone(),
++            "xelatex" => self.xelatex.clone(),
++            "lualatex" => self.lualatex.clone(),
++            _ => None,
++        };
++        resolved.unwrap_or_else(|| name.to_string())
++    }
++
++    /// Registra il percorso risolto di un tool (None = il PATH basta).
++    pub fn set_resolved(&mut self, name: &str, path: Option<String>) {
++        match name {
++            "latexmk" => self.latexmk = path,
++            "pdflatex" => self.pdflatex = path,
++            "xelatex" => self.xelatex = path,
++            "lualatex" => self.lualatex = path,
++            _ => {}
++        }
++    }
++}
++
++/// Un passo della build: programma (nome o percorso risolto) con argomenti
++/// espliciti, oppure il motore con argomenti costruiti a runtime.
++#[derive(Debug, Clone, PartialEq, Eq)]
++pub enum Step {
++    Bib(String, Vec<String>),
++    Engine(String),
++}
++
++/// I passi che la decisione del gate ha già determinato, con i programmi
++/// presi dai percorsi risolti: un tool trovato oltre il PATH va eseguito
++/// col percorso completo, perché col nome nudo lo spawn fallirebbe proprio
++/// nel caso che la risoluzione ha risolto.
++pub fn build_phases(
++    latexmk_mode: bool,
++    engine: &str,
++    paths: &ToolPaths,
++    latexmk_args: Vec<String>,
++) -> Vec<Step> {
++    if latexmk_mode {
++        vec![Step::Bib(paths.program("latexmk"), latexmk_args)]
++    } else {
++        vec![Step::Engine(paths.program(engine))]
++    }
++}
++
++/// Il passo bibliografico reso necessario dal primo passaggio, dai marker
++/// nell'aux e dalla presenza del file .bcf: `\bibdata` chiede BibTeX,
++/// altrimenti biblatex/biber (marker `\abx@aux` nell'aux o file .bcf).
++#[derive(Debug, Clone, Copy, PartialEq, Eq)]
++pub enum BibNeed {
++    Bibtex,
++    Biber,
++}
++
++pub fn bib_need(aux_text: &str, bcf_exists: bool) -> Option<BibNeed> {
++    if aux_text.contains("\\bibdata") {
++        Some(BibNeed::Bibtex)
++    } else if aux_text.contains("\\abx@aux") || bcf_exists {
++        Some(BibNeed::Biber)
++    } else {
++        None
++    }
++}
++
+ #[cfg(test)]
+ mod tests {
+     use super::*;
++    use std::time::{SystemTime, UNIX_EPOCH};
+ 
+     fn det(latexmk: bool, pdflatex: bool, xelatex: bool, lualatex: bool) -> ToolDetection {
+         ToolDetection {
+@@ -146,6 +393,22 @@ mod tests {
+         }
+     }
+ 
++    // Directory temporanea unica per le fixture: pid + nanosecondi, così i
++    // test in parallelo non si toccano.
++    fn temp_root(tag: &str) -> PathBuf {
++        let base = std::env::temp_dir().join(format!(
++            "morsa-toolchain-{}-{}-{}",
++            tag,
++            std::process::id(),
++            SystemTime::now()
++                .duration_since(UNIX_EPOCH)
++                .unwrap_or_default()
++                .subsec_nanos()
++        ));
++        std::fs::create_dir_all(&base).unwrap();
++        base
++    }
++
+     // (a) rilevazione vuota → esito tipizzato «toolchain assente», con il
+     // nome del motore mancante. Il flusso naive tentava lo spawn alla cieca
+     // e restituiva l'errore io grezzo («program not found»).
+@@ -261,4 +524,259 @@ mod tests {
+         assert!(d2.engine_available("latexmk"));
+         assert!(!d2.any_engine(), "latexmk da solo non è un motore");
+     }
++
++    // (g) l'ordine delle candidate dirs è deterministico: MiKTeX per-utente
++    // prima (LOCALAPPDATA), poi roaming (APPDATA), poi il sistema; le
++    // radici utente assenti non alterano l'ordine delle restanti.
++    #[test]
++    fn candidate_dirs_ordine_deterministico_miktex_utente_prima() {
++        let local = Path::new(r"C:\Users\mario\AppData\Local");
++        let roaming = Path::new(r"C:\Users\mario\AppData\Roaming");
++        let dirs = candidate_dirs(TargetOs::Windows, Some(local), Some(roaming), None);
++        // Le aspettative costruiscono gli stessi componenti con Path::join:
++        // l'ORDINE e la struttura sono ciò che il test verifica, i separatori
++        // sono quelli del sistema ospite (su Windows li decide Path::join).
++        let miktex = |root: &Path| {
++            root.join("Programs")
++                .join("MiKTeX")
++                .join("miktex")
++                .join("bin")
++                .join("x64")
++        };
++        assert_eq!(
++            dirs,
++            vec![
++                miktex(local),
++                miktex(roaming),
++                PathBuf::from(r"C:\Program Files\MiKTeX\miktex\bin\x64"),
++            ],
++            "MiKTeX per-utente prima, poi roaming, poi sistema"
++        );
++        // Radici utente assenti: restano le sole dir di sistema, nell'ordine.
++        assert_eq!(
++            candidate_dirs(TargetOs::Windows, None, None, None),
++            vec![PathBuf::from(r"C:\Program Files\MiKTeX\miktex\bin\x64")]
++        );
++        // La stessa chiamata dà lo stesso elenco: nessuna dipendenza
++        // dall'ordine di lettura del filesystem.
++        assert_eq!(
++            dirs,
++            candidate_dirs(TargetOs::Windows, Some(local), Some(roaming), None)
++        );
++        // macOS e Linux: texbin di sistema prima, poi le bin standard.
++        assert_eq!(
++            candidate_dirs(TargetOs::MacOS, None, None, None),
++            vec![
++                PathBuf::from("/Library/TeX/texbin"),
++                PathBuf::from("/usr/local/bin")
++            ]
++        );
++        assert_eq!(
++            candidate_dirs(TargetOs::Linux, None, None, None),
++            vec![PathBuf::from("/usr/bin"), PathBuf::from("/usr/local/bin")]
++        );
++    }
++
++    // (h) TeX Live: anno più recente prima e bin\windows prima di bin\win32;
++    // le dir senza bin e i file spuri non incidono sull'elenco.
++    #[test]
++    fn texlive_anno_piu_recente_prima_e_windows_prima_di_win32() {
++        let root = temp_root("texlive");
++        for (version, kind) in [
++            ("2019", "win32"),
++            ("2023", "windows"),
++            ("2021", "win32"),
++            ("2025", "windows"),
++        ] {
++            let d = root.join(version).join("bin").join(kind);
++            std::fs::create_dir_all(&d).unwrap();
++        }
++        // Dir senza ramo bin\windows né bin\win32 e un file spurio: fuori.
++        std::fs::create_dir_all(root.join("2020").join("bin")).unwrap();
++        std::fs::write(root.join("non-una-versione"), "x").unwrap();
++        let dirs = candidate_dirs(TargetOs::Windows, None, None, Some(&root));
++        assert_eq!(
++            dirs,
++            vec![
++                // MiKTeX di sistema viene prima del glob TeX Live.
++                PathBuf::from(r"C:\Program Files\MiKTeX\miktex\bin\x64"),
++                root.join("2025").join("bin").join("windows"),
++                root.join("2023").join("bin").join("windows"),
++                root.join("2021").join("bin").join("win32"),
++                root.join("2019").join("bin").join("win32"),
++            ],
++            "anno più recente prima, bin\\windows prima di bin\\win32"
++        );
++        let _ = std::fs::remove_dir_all(&root);
++    }
++
++    // (i) la risoluzione segue l'ordine di preferenza, gestisce il suffisso
++    // «.exe» di Windows e lascia None un tool assente ovunque.
++    #[test]
++    fn risoluzione_ordine_di_preferenza_suffisso_e_assenza() {
++        let root = temp_root("resolve");
++        let prima = root.join("prima");
++        let seconda = root.join("seconda");
++        std::fs::create_dir_all(&prima).unwrap();
++        std::fs::create_dir_all(&seconda).unwrap();
++        std::fs::write(seconda.join("morsa-fake"), "#!/bin/sh\n").unwrap();
++        #[cfg(unix)]
++        {
++            use std::os::unix::fs::PermissionsExt;
++            std::fs::set_permissions(
++                seconda.join("morsa-fake"),
++                std::fs::Permissions::from_mode(0o755),
++            )
++            .unwrap();
++        }
++        // Solo nella seconda dir: vince l'unica occorrenza.
++        assert_eq!(
++            resolve_tool_with_suffix("morsa-fake", &[prima.clone(), seconda.clone()], ""),
++            Some(seconda.join("morsa-fake")),
++            "la prima directory che contiene il tool vince"
++        );
++        // Nella prima dir c'è anche il .exe: col suffisso .exe vince la prima.
++        std::fs::write(prima.join("morsa-fake.exe"), "x").unwrap();
++        #[cfg(unix)]
++        {
++            use std::os::unix::fs::PermissionsExt;
++            std::fs::set_permissions(
++                prima.join("morsa-fake.exe"),
++                std::fs::Permissions::from_mode(0o755),
++            )
++            .unwrap();
++        }
++        assert_eq!(
++            resolve_tool_with_suffix("morsa-fake", &[prima.clone(), seconda.clone()], ".exe"),
++            Some(prima.join("morsa-fake.exe")),
++            "il suffisso esplicito rende verificabile il ramo «name.exe» su qualunque host"
++        );
++        // Assente ovunque → None: il tool resta non disponibile.
++        assert_eq!(
++            resolve_tool("morsa-assente-ovunque", &[prima, seconda]),
++            None,
++            "un tool assente da tutte le candidate dirs non è risolto"
++        );
++        let _ = std::fs::remove_dir_all(&root);
++    }
++
++    // (j) IL DISCRIMINANTE della risoluzione: un tool presente in una
++    // candidate dir si trova ANCHE quando il PATH di processo non lo
++    // contiene (il caso del bug MORSA: l'app segnala «Nessuna distribuzione
++    // LaTeX trovata» mentre pdflatex --version funziona da cmd). La prova
++    // ROSSA contro la detection PATH-only attuale è nell'allegato della
++    // consegna; qui l'elenco candidate e la risoluzione lo trovano.
++    #[test]
++    fn tool_nelle_candidate_dirs_risolto_anche_se_il_path_non_lo_contiene() {
++        let root = temp_root("candidate");
++        let bin = root
++            .join("Programs")
++            .join("MiKTeX")
++            .join("miktex")
++            .join("bin")
++            .join("x64");
++        std::fs::create_dir_all(&bin).unwrap();
++        std::fs::write(bin.join("morsa-fake-latexmk"), "#!/bin/sh\n").unwrap();
++        std::fs::write(bin.join("morsa-fake-latexmk.exe"), "x").unwrap();
++        #[cfg(unix)]
++        {
++            use std::os::unix::fs::PermissionsExt;
++            for f in ["morsa-fake-latexmk", "morsa-fake-latexmk.exe"] {
++                std::fs::set_permissions(
++                    bin.join(f),
++                    std::fs::Permissions::from_mode(0o755),
++                )
++                .unwrap();
++            }
++        }
++        let dirs = candidate_dirs(TargetOs::Windows, Some(&root), None, None);
++        // La candidate dir MiKTeX per-utente è la prima dell'elenco...
++        assert_eq!(dirs[0], bin, "MiKTeX per-utente prima di tutto il resto");
++        // ...e la risoluzione la trova sia col nome (macOS/Linux) sia col
++        // suffisso .exe (Windows).
++        assert_eq!(
++            resolve_tool_with_suffix("morsa-fake-latexmk", &dirs, ""),
++            Some(bin.join("morsa-fake-latexmk"))
++        );
++        assert_eq!(
++            resolve_tool_with_suffix("morsa-fake-latexmk", &dirs, ".exe"),
++            Some(bin.join("morsa-fake-latexmk.exe"))
++        );
++        // Sul sistema corrente, col suffisso di piattaforma giusto.
++        let expected = if cfg!(windows) {
++            bin.join("morsa-fake-latexmk.exe")
++        } else {
++            bin.join("morsa-fake-latexmk")
++        };
++        assert_eq!(resolve_tool("morsa-fake-latexmk", &dirs), Some(expected));
++        let _ = std::fs::remove_dir_all(&root);
++    }
++
++    // (k) CRITICO: gli spawn usano il PERCORSO risolto, mai il nome nudo
++    // quando la risoluzione l'ha trovato — altrimenti la detection trova il
++    // tool e la compilazione fallirebbe comunque.
++    #[test]
++    fn gli_spawn_usano_il_percorso_risolto_mai_il_nome_nudo() {
++        let mut paths = ToolPaths::default();
++        paths.set_resolved(
++            "latexmk",
++            Some(
++                r"C:\Users\mario\AppData\Local\Programs\MiKTeX\miktex\bin\x64\latexmk.exe"
++                    .into(),
++            ),
++        );
++        paths.set_resolved("xelatex", Some("/Library/TeX/texbin/xelatex".into()));
++        assert_eq!(
++            paths.program("latexmk"),
++            r"C:\Users\mario\AppData\Local\Programs\MiKTeX\miktex\bin\x64\latexmk.exe",
++            "il passo latexmk deve partire col percorso risolto"
++        );
++        assert_eq!(paths.program("xelatex"), "/Library/TeX/texbin/xelatex");
++        // Tool raggiungibile dal PATH (nessun percorso registrato): il nome
++        // resta il programma da eseguire — comportamento invariato.
++        assert_eq!(paths.program("pdflatex"), "pdflatex");
++        // Nomi fuori dalla mappa: nessun percorso da applicare.
++        assert_eq!(paths.program("bibtex"), "bibtex");
++    }
++
++    // (l) le fasi della build portano i percorsi risolti.
++    #[test]
++    fn le_fasi_della_build_portano_i_percorsi_risolti() {
++        let mut paths = ToolPaths::default();
++        paths.set_resolved("latexmk", Some("/opt/texbin/latexmk".into()));
++        paths.set_resolved("pdflatex", Some("/opt/texbin/pdflatex".into()));
++
++        // Modalità latexmk: un passo solo, col percorso risolto di latexmk.
++        let fasi = build_phases(true, "pdflatex", &paths, vec!["-pdf".into(), "main.tex".into()]);
++        assert_eq!(
++            fasi,
++            vec![Step::Bib(
++                "/opt/texbin/latexmk".into(),
++                vec!["-pdf".into(), "main.tex".into()]
++            )]
++        );
++
++        // Modalità motore: il motore col percorso risolto.
++        let fasi = build_phases(false, "pdflatex", &paths, vec![]);
++        assert_eq!(fasi, vec![Step::Engine("/opt/texbin/pdflatex".into())]);
++
++        // Nessun percorso risolto (il PATH basta): nomi nudi, come prima.
++        let fasi = build_phases(false, "xelatex", &ToolPaths::default(), vec![]);
++        assert_eq!(fasi, vec![Step::Engine("xelatex".into())]);
++    }
++
++    // (m) il passo bibliografico dai marker del primo passaggio: \bibdata
++    // chiede BibTeX, altrimenti biber (marker \abx@aux nell'aux o file .bcf).
++    #[test]
++    fn il_passo_bibliografico_dai_marker_del_primo_passaggio() {
++        assert_eq!(bib_need("\\bibdata{biblio}", false), Some(BibNeed::Bibtex));
++        assert_eq!(bib_need("\\abx@aux{ref}{0}", false), Some(BibNeed::Biber));
++        assert_eq!(bib_need("", true), Some(BibNeed::Biber), "il file .bcf basta");
++        // \bibdata vince: è il marker che BibTeX consuma direttamente.
++        assert_eq!(
++            bib_need("\\bibdata{x}\\abx@aux{y}{1}", true),
++            Some(BibNeed::Bibtex)
++        );
++        assert_eq!(bib_need("niente bibliografia", false), None);
++    }
+ }
+-- 
+2.47.3
+
