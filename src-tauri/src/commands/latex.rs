@@ -621,8 +621,8 @@ pub async fn start_build(
                     }
                     None => {}
                 }
-                extra.push(Step::Engine(engine2.clone()));
-                extra.push(Step::Engine(engine2.clone()));
+                extra.push(Step::Engine(paths2.program(&engine2)));
+                extra.push(Step::Engine(paths2.program(&engine2)));
                 for e in extra.into_iter().rev() {
                     phases.insert(0, e);
                 }
