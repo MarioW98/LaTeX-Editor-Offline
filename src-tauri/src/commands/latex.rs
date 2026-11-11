@@ -767,7 +767,7 @@ mod tests {
             use std::os::unix::fs::PermissionsExt;
             std::fs::set_permissions(&exe, std::fs::Permissions::from_mode(0o755)).unwrap();
         }
-        let info = probe_with("morsa-probe-fixture", &[bin.clone()]);
+        let info = probe_with("morsa-probe-fixture", std::slice::from_ref(&bin));
         assert!(
             info.available,
             "il tool nelle candidate dirs deve risultare disponibile anche \
@@ -791,7 +791,7 @@ mod tests {
     #[test]
     fn probe_lascia_non_disponibile_un_tool_assente_ovunque() {
         let root = temp_root("assente");
-        let info = probe_with("morsa-assente-ovunque", &[root.clone()]);
+        let info = probe_with("morsa-assente-ovunque", std::slice::from_ref(&root));
         assert!(!info.available);
         assert!(info.resolved_path.is_none());
         assert!(info.version.is_empty());
